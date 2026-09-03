@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/7/28.
 //
 #include "ResourceManager.h"
@@ -126,11 +126,17 @@ namespace FCT {
 
     void ResourceManager::updateGraph()
     {
-        m_dependencyGraph.update();
-        m_needChangeIndexImages = m_dependencyGraph.computeOrder([](const ImageSaved& saved)
+        auto status = m_dependencyGraph.update();
+        if (!status.ok()) {
+            return;
+        }
+        auto resultOr = m_dependencyGraph.computeOrder([](const ImageSaved& saved)
         {
             return saved.mutilBuffer && saved.autoIndex;
         });
+        if (resultOr.ok()) {
+            m_needChangeIndexImages = std::move(*resultOr);
+        }
     }
 
     void ResourceManager::registerWindow(Window* wnd)

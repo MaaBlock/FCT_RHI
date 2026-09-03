@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/5/9.
 //
 
@@ -7,6 +7,8 @@
 #include "./Base/string.h"
 #include "./Base/Flags.h"
 #include "./Base/Noncopyable.h"
+#include "./Base/Containers.h"
+#include "./Base/Status.h"
 #include "./DebugTools/MemoryCheak.h"
 #include "./MutilThreadBase/RefCount.h"
 #endif //BASES_H

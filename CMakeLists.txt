@@ -353,6 +353,9 @@ target_link_libraries(FCT PUBLIC
         absl::log
         absl::base
         absl::bits
+        absl::status
+        absl::statusor
+        absl::strings
 )
 
 file(GLOB THIRDPARTY_MODULE_HEADERS
