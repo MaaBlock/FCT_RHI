@@ -26,9 +26,18 @@ namespace FCT {
     using absl::UnknownError;
     using absl::StrCat;
 
+    inline const Status& ToStatus(const Status& status) {
+        return status;
+    }
+
+    template<typename T>
+    inline Status ToStatus(const StatusOr<T>& statusOr) {
+        return statusOr.status();
+    }
+
     #define FCT_CHECK_STATUS(expr) \
         do { \
-            auto&& _status_eval = (expr); \
+            auto&& _status_eval = ::FCT::ToStatus(expr); \
             if (!_status_eval.ok()) { \
                 return _status_eval; \
             } \
