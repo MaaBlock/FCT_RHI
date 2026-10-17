@@ -8,5 +8,5 @@
 	path = ThirdParty/work_contract
 	url = https://github.com/MaaBlock/work_contract.git
 [submodule "Thirdparty/tracy"]
-	path = Thirdparty/tracy
+	path = ThirdParty/tracy
 	url = https://github.com/MaaBlock/tracy
