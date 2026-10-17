@@ -377,11 +377,6 @@ namespace FCT {
             NodeInfo* nodeInfo = nullptr;
         };
 
-        struct TopoResult {
-            Vector<BoostVertex> sortedVertices{};
-            bool hasCycle = false;
-        };
-
         using TokenGraphSavedBoostGraph =
             boost::adjacency_list<
                 boost::listS,
@@ -393,6 +388,11 @@ namespace FCT {
 
         using BoostVertex = typename TokenGraphSavedBoostGraph::vertex_descriptor;
         using BoostEdge = typename TokenGraphSavedBoostGraph::edge_descriptor;
+
+        struct TopoResult {
+            Vector<BoostVertex> sortedVertices{};
+            bool hasCycle = false;
+        };
 
         void addVertex(const Token& token, int weakRef = 0) {
             if (m_tokenToVertex.contains(token)) {

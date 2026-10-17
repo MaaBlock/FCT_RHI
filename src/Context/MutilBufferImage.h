@@ -39,6 +39,7 @@ namespace FCT
         {
             m_currentIndex = index % m_images.size();
         }
+        void updateData(const void* data, size_t dataSize) override;
         UpdateResult* updateToCurrent(void* data, size_t size) override;
         uint32_t imageCount() const
         {

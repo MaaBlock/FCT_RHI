@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/8/10.
 //
 
@@ -290,6 +290,7 @@ namespace FCT
         std::unordered_map<std::string, Image*> m_allocatedImages;
         std::unordered_map<std::string, RHI::Pass*> m_allocatedPasses;
         std::vector<PassDesc> m_originalPasses;
+        std::unordered_map<std::string, PassDesc> m_passDescs;
         std::vector<std::string> m_topologicalSortPasses;
         std::unordered_map<std::string, RHI::PassGroup*> m_allocatedPassGroups; // 存储创建的PassGroup
         void cleanUpCompile();
@@ -308,6 +309,7 @@ namespace FCT
         void clearOriginalPasses()
         {
             m_originalPasses.clear();
+            m_passDescs.clear();
         }
     private:
         RenderGraphImageNode* getOrCreateImageNode(const std::string& name, const Texture& texture);
@@ -411,16 +413,37 @@ namespace FCT
             IEventSystem<EventSystemConfig::TriggerOnly>::unsubscribe(subscribeId);
         }
         template<typename... Args>
-        void addPass(std::string name,Args&&... args)
+        void addPass(std::string name, Args&&... args)
         {
             PassDesc desc(name);
             desc.processArgs(std::forward<Args>(args)...);
-            m_originalPasses.push_back(desc);
-            //addPass(desc);
+            addPassDesc(desc);
         }
+
+        template<typename... Args>
+        void addComputePass(std::string name, IComputeDispatcher* dispatcher, Args&&... args)
+        {
+            PassDesc desc(name);
+            desc.type = PassType::Compute;
+            desc.computeDispatcher = dispatcher;
+            desc.processArgs(std::forward<Args>(args)...);
+            addPassDesc(desc);
+        }
+
+        template<typename... Args>
+        void addExternalInteropPass(std::string name, IComputeDispatcher* dispatcher, Args&&... args)
+        {
+            PassDesc desc(name);
+            desc.type = PassType::ExternalInterop;
+            desc.computeDispatcher = dispatcher;
+            desc.processArgs(std::forward<Args>(args)...);
+            addPassDesc(desc);
+        }
+
         void addPassDesc(const PassDesc& desc)
         {
             m_originalPasses.push_back(desc);
+            m_passDescs[desc.name] = desc;
         }
         void buildGraph()
         {

@@ -73,9 +73,13 @@ namespace FCT {
                       .setImageColorSpace(format.colorSpace)
                       .setImageExtent(extent)
                       .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
-                      .setPreTransform(capabilities.currentTransform)
-                      .setPresentMode(presentMode)
-                      .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
+                      .setPreTransform(capabilities.currentTransform);
+            vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eColorAttachment;
+            if (capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst) {
+                usage |= vk::ImageUsageFlagBits::eTransferDst;
+            }
+            createInfo.setPresentMode(presentMode)
+                      .setImageUsage(usage)
                       .setImageArrayLayers(1)
                       .setClipped(true);
 
@@ -137,6 +141,7 @@ namespace FCT {
                 ret->format(getFormat());
                 ret->width(m_width);
                 ret->height(m_height);
+                ret->usage(ImageUsage::RenderTarget);
                 ret->create(image);
 
                 m_fctImages.push_back(ret);
@@ -313,7 +318,7 @@ namespace FCT {
                 auto nextResult = dc.acquireNextImageKHR(
                         m_swapchain,
                         UINT64_MAX,
-                        m_prensentFinshSemphore->semaphore(),
+                        m_prensentFinshSemphore ? m_prensentFinshSemphore->semaphore() : nullptr,
                         nullptr,
                         &m_currentImageIndex
                 );
@@ -355,7 +360,7 @@ namespace FCT {
                     if (nextResult == vk::Result::eSuboptimalKHR) {
                         return false;
                     }
-            } else
+                } else
             {
                 fence = FCT_NEW(VK_Fence,m_ctx);
                 fence->create();

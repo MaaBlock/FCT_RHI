@@ -1,4 +1,4 @@
-﻿#include "../UI/Window.h"
+#include "../UI/Window.h"
 #include "./Context.h"
 #include "./Context.hpp"
 #include "../RHI/PassGroup.h"
@@ -894,22 +894,70 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
 
         const std::vector<std::string>& orderedPassNames = orderIt->second;
 
-        passGroup->beginSubmit(cmdBuffer);
+        bool isPureComputeGroup = true;
+        for (const auto& passName : orderedPassNames) {
+            auto descIt = m_passDescs.find(passName);
+            if (descIt == m_passDescs.end() || (!descIt->second.computeDispatcher &&
+                descIt->second.type != PassType::Compute &&
+                descIt->second.type != PassType::ExternalInterop)) {
+                isPureComputeGroup = false;
+                break;
+            }
+        }
+
+        if (!isPureComputeGroup) {
+            passGroup->beginSubmit(cmdBuffer);
+        }
 
         for (size_t i = 0; i < orderedPassNames.size(); ++i) {
             const std::string& passName = orderedPassNames[i];
+
+            auto descIt = m_passDescs.find(passName);
+            if (descIt != m_passDescs.end() && descIt->second.computeDispatcher) {
+                class RenderGraphComputeContext : public ComputeExecutionContext {
+                public:
+                    RenderGraphComputeContext(RenderGraph* graph, RHI::CommandBuffer* cmdBuf, std::string name)
+                        : m_graph(graph), m_cmdBuf(cmdBuf), m_name(std::move(name)) {}
+
+                    Image* getImage(const std::string& name) override {
+                        if (!m_graph) return nullptr;
+                        return m_graph->getImage(name);
+                    }
+
+                    void* getExternalNativeHandle(const std::string& name) override {
+                        if (!m_graph) return nullptr;
+                        Image* img = m_graph->getImage(name);
+                        if (!img) return nullptr;
+                        return img->currentImage();
+                    }
+
+                    RHI::CommandBuffer* getCommandBuffer() override {
+                        return m_cmdBuf;
+                    }
+
+                private:
+                    RenderGraph* m_graph;
+                    RHI::CommandBuffer* m_cmdBuf;
+                    std::string m_name;
+                };
+
+                RenderGraphComputeContext execCtx(this, cmdBuffer, passName);
+                descIt->second.computeDispatcher->dispatch(execCtx);
+            }
 
             PassSubmitEvent env;
             env.passName = passName;
             env.cmdBuf = cmdBuffer;
             trigger(env);
 
-            if (i < orderedPassNames.size() - 1) {
+            if (!isPureComputeGroup && i < orderedPassNames.size() - 1) {
                 passGroup->nextPass(cmdBuffer);
             }
         }
 
-        passGroup->endSubmit(cmdBuffer);
+        if (!isPureComputeGroup) {
+            passGroup->endSubmit(cmdBuffer);
+        }
     }
     void RenderGraph::simulateExecutionAndAnalyzeBarriers() {
         auto passGroups = m_passesUnions.getGroups();

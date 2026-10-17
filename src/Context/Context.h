@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../ThirdParty.h"
 #include "../ToolDefine.h"
 #include "../Bases.h"
@@ -361,3 +361,4 @@ namespace FCT
 	}
 }
 #include "Mesh.hpp"
+#include "Context.hpp"

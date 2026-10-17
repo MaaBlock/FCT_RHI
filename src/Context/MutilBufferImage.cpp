@@ -234,6 +234,13 @@ namespace FCT
         return m_images[m_currentIndex];
     }
 
+    void MutilBufferImage::updateData(const void* data, size_t dataSize)
+    {
+        if (!m_images.empty() && m_currentIndex < m_images.size()) {
+            m_images[m_currentIndex]->updateData(data, dataSize);
+        }
+    }
+
     UpdateResult* MutilBufferImage::updateToCurrent(void* data, size_t size)
     {
         UpdateResult* res = new UpdateResult();

@@ -70,7 +70,8 @@ namespace FCT {
         void transferDataToImage(vk::Image dstImage, uint32_t width, uint32_t height, uint32_t depth, vk::Format format,
                                  uint32_t mipLevels, uint32_t arrayLayers, vk::ImageAspectFlags aspectMask,
                                  const void* data,
-                                 size_t dataSize, vk::Fence* outFence = nullptr, std::function<void()>* cleanUpCallback = nullptr);
+                                 size_t dataSize, vk::Fence* outFence = nullptr, std::function<void()>* cleanUpCallback = nullptr,
+                                 vk::ImageLayout finalLayout = vk::ImageLayout::eUndefined);
 
         void asyncTransferDataToImage(vk::Image dstImage, uint32_t width, uint32_t height, uint32_t depth, vk::Format format,
                                       uint32_t mipLevels, uint32_t arrayLayers, vk::ImageAspectFlags aspectMask,
@@ -127,6 +128,9 @@ namespace FCT {
         std::unordered_map<size_t, std::unique_ptr<RHI::ConstBuffer>> m_emptyConstBufferCache;
         std::unique_ptr<Sampler> m_emptySampler;
         bool m_bindlessSupported = false;
+        vk::Buffer m_syncStagingBuffer;
+        vk::DeviceMemory m_syncStagingMemory;
+        size_t m_syncStagingBufferSize = 0;
     };
 }
 

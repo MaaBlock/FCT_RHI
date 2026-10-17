@@ -52,6 +52,14 @@ namespace FCT
     VK_Context::~VK_Context()
     {
         if (m_device) {
+            if (m_syncStagingBuffer) {
+                m_device.destroyBuffer(m_syncStagingBuffer);
+                m_syncStagingBuffer = nullptr;
+            }
+            if (m_syncStagingMemory) {
+                m_device.freeMemory(m_syncStagingMemory);
+                m_syncStagingMemory = nullptr;
+            }
             m_device.freeCommandBuffers(m_commandPool, m_commandBuffers);
             m_device.destroyCommandPool(m_commandPool);
             if (m_transferCommandPool) {
@@ -243,7 +251,8 @@ namespace FCT
        void VK_Context::transferDataToImage(vk::Image dstImage, uint32_t width, uint32_t height, uint32_t depth,
                                          vk::Format format, uint32_t mipLevels, uint32_t arrayLayers,
                                          vk::ImageAspectFlags aspectMask, const void* data, size_t dataSize,
-                                         vk::Fence* outFence, std::function<void()>* cleanUpCallback)
+                                         vk::Fence* outFence, std::function<void()>* cleanUpCallback,
+                                         vk::ImageLayout finalLayout)
     {
         size_t pixelSize = FormatSize(FromVkFormat(format));
         size_t fullImageSize = width * height * depth * pixelSize * arrayLayers;
@@ -254,21 +263,62 @@ namespace FCT
 
         vk::Buffer stagingBuffer;
         vk::DeviceMemory stagingMemory;
+        bool isCachedStaging = (outFence == nullptr);
+
+        if (finalLayout == vk::ImageLayout::ePresentSrcKHR)
+        {
+            m_device.waitIdle();
+        }
 
         try
         {
-            stagingBuffer = m_device.createBuffer(stagingBufferInfo);
+            if (isCachedStaging)
+            {
+                if (m_syncStagingBufferSize < fullImageSize)
+                {
+                    if (m_syncStagingBuffer)
+                    {
+                        m_device.destroyBuffer(m_syncStagingBuffer);
+                        m_syncStagingBuffer = nullptr;
+                    }
+                    if (m_syncStagingMemory)
+                    {
+                        m_device.freeMemory(m_syncStagingMemory);
+                        m_syncStagingMemory = nullptr;
+                    }
 
-            vk::MemoryRequirements memRequirements = m_device.getBufferMemoryRequirements(stagingBuffer);
+                    stagingBufferInfo.setSize(fullImageSize);
+                    m_syncStagingBuffer = m_device.createBuffer(stagingBufferInfo);
 
-            vk::MemoryAllocateInfo allocInfo;
-            allocInfo.setAllocationSize(memRequirements.size);
-            allocInfo.setMemoryTypeIndex(
-                findMemoryType(memRequirements.memoryTypeBits,
-                               vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent));
+                    vk::MemoryRequirements memRequirements = m_device.getBufferMemoryRequirements(m_syncStagingBuffer);
+                    vk::MemoryAllocateInfo allocInfo;
+                    allocInfo.setAllocationSize(memRequirements.size);
+                    allocInfo.setMemoryTypeIndex(
+                        findMemoryType(memRequirements.memoryTypeBits,
+                                       vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent));
 
-            stagingMemory = m_device.allocateMemory(allocInfo);
-            m_device.bindBufferMemory(stagingBuffer, stagingMemory, 0);
+                    m_syncStagingMemory = m_device.allocateMemory(allocInfo);
+                    m_device.bindBufferMemory(m_syncStagingBuffer, m_syncStagingMemory, 0);
+                    m_syncStagingBufferSize = fullImageSize;
+                }
+                stagingBuffer = m_syncStagingBuffer;
+                stagingMemory = m_syncStagingMemory;
+            }
+            else
+            {
+                stagingBuffer = m_device.createBuffer(stagingBufferInfo);
+
+                vk::MemoryRequirements memRequirements = m_device.getBufferMemoryRequirements(stagingBuffer);
+
+                vk::MemoryAllocateInfo allocInfo;
+                allocInfo.setAllocationSize(memRequirements.size);
+                allocInfo.setMemoryTypeIndex(
+                    findMemoryType(memRequirements.memoryTypeBits,
+                                   vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent));
+
+                stagingMemory = m_device.allocateMemory(allocInfo);
+                m_device.bindBufferMemory(stagingBuffer, stagingMemory, 0);
+            }
 
             void* mappedData = m_device.mapMemory(stagingMemory, 0, dataSize);
             memcpy(mappedData, data, dataSize);
@@ -277,18 +327,28 @@ namespace FCT
 
             bool needsQueueTransfer = m_graphicsQueueFamilyIndex != m_transferQueueFamilyIndex;
 
-            vk::ImageLayout finalLayout;
             vk::AccessFlags finalAccessMask;
 
-            if (aspectMask & vk::ImageAspectFlagBits::eDepth || aspectMask & vk::ImageAspectFlagBits::eStencil)
+            if (finalLayout == vk::ImageLayout::eUndefined)
             {
-                finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-                finalAccessMask =
-                    vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+                if (aspectMask & vk::ImageAspectFlagBits::eDepth || aspectMask & vk::ImageAspectFlagBits::eStencil)
+                {
+                    finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+                    finalAccessMask =
+                        vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+                }
+                else
+                {
+                    finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    finalAccessMask = vk::AccessFlagBits::eShaderRead;
+                }
+            }
+            else if (finalLayout == vk::ImageLayout::ePresentSrcKHR)
+            {
+                finalAccessMask = vk::AccessFlagBits::eMemoryRead;
             }
             else
             {
-                finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
                 finalAccessMask = vk::AccessFlagBits::eShaderRead;
             }
 
@@ -395,6 +455,10 @@ namespace FCT
                             {
                                 finalStage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
                             }
+                            else if (capturedFinalLayout == vk::ImageLayout::ePresentSrcKHR)
+                            {
+                                finalStage = vk::PipelineStageFlagBits::eBottomOfPipe;
+                            }
                             else
                             {
                                 finalStage = vk::PipelineStageFlagBits::eAllCommands;
@@ -451,6 +515,10 @@ namespace FCT
                     {
                         finalStage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
                     }
+                    else if (finalLayout == vk::ImageLayout::ePresentSrcKHR)
+                    {
+                        finalStage = vk::PipelineStageFlagBits::eBottomOfPipe;
+                    }
                     else
                     {
                         finalStage = vk::PipelineStageFlagBits::eAllCommands;
@@ -462,20 +530,23 @@ namespace FCT
                     endSingleTimeCommands(graphicsCmdBuffer);
                 }
 
-                m_device.destroyBuffer(stagingBuffer);
-                m_device.freeMemory(stagingMemory);
+                if (!isCachedStaging)
+                {
+                    m_device.destroyBuffer(stagingBuffer);
+                    m_device.freeMemory(stagingMemory);
+                }
             }
         }
         catch (const std::exception& e)
         {
             ferr << "Failed to transfer data to image: " << e.what() << std::endl;
 
-            if (stagingBuffer)
+            if (stagingBuffer && !isCachedStaging)
             {
                 m_device.destroyBuffer(stagingBuffer);
             }
 
-            if (stagingMemory)
+            if (stagingMemory && !isCachedStaging)
             {
                 m_device.freeMemory(stagingMemory);
             }

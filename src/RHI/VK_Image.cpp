@@ -145,6 +145,10 @@ namespace FCT {
                     aspectMask = vk::ImageAspectFlagBits::eColor;
                 }
 
+                vk::ImageLayout targetLayout = (m_usage & ImageUsage::RenderTarget)
+                    ? vk::ImageLayout::ePresentSrcKHR
+                    : vk::ImageLayout::eShaderReadOnlyOptimal;
+
                 m_ctx->transferDataToImage(
                     m_image,
                     m_width,
@@ -155,7 +159,10 @@ namespace FCT {
                     m_arrayLayers,
                     aspectMask,
                     data,
-                    dataSize
+                    dataSize,
+                    nullptr,
+                    nullptr,
+                    targetLayout
                 );
             }
             catch (const std::exception& e) {
@@ -178,6 +185,10 @@ namespace FCT {
                     aspectMask = vk::ImageAspectFlagBits::eColor;
                 }
 
+                vk::ImageLayout targetLayout = (m_usage & ImageUsage::RenderTarget)
+                    ? vk::ImageLayout::ePresentSrcKHR
+                    : vk::ImageLayout::eShaderReadOnlyOptimal;
+
                 m_ctx->transferDataToImage(
                     m_image,
                     m_width,
@@ -190,7 +201,8 @@ namespace FCT {
                     data,
                     dataSize,
                     static_cast<VK_Fence*>(fence)->fencePtr(),
-                    onCompletion
+                    onCompletion,
+                    targetLayout
                 );
             }
             catch (const std::exception& e) {
