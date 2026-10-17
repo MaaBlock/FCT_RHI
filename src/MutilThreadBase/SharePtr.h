@@ -10,9 +10,12 @@ template<typename T>
     struct IsRefCountBase {
     private:
         static constexpr bool test(const RefCount*) { return true; }
+        template<typename Derived, bool UsedByMutilThread, bool UseCRTP>
+        static constexpr bool test(const NewRefCount<Derived, UsedByMutilThread, UseCRTP>*) { return true; }
         static constexpr bool test(...) { return false; }
     public:
-        static constexpr bool ret = test(static_cast<T*>(nullptr));
+        static constexpr bool ret = test(static_cast<const std::remove_cv_t<T>*>(nullptr));
+        static constexpr bool value = ret;
     };
     template<typename T,bool isRefCountBase = IsRefCountBase<T>::ret>
     class RefCountPolicy {

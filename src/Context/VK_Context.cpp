@@ -188,6 +188,7 @@ namespace FCT
 
     void VK_Context::transferDataToBuffer(vk::Buffer dstBuffer, size_t size, const void* data)
     {
+        ZoneScoped();
         vk::BufferCreateInfo stagingBufferInfo;
         stagingBufferInfo.setSize(size);
         stagingBufferInfo.setUsage(vk::BufferUsageFlagBits::eTransferSrc);
@@ -254,6 +255,7 @@ namespace FCT
                                          vk::Fence* outFence, std::function<void()>* cleanUpCallback,
                                          vk::ImageLayout finalLayout)
     {
+        ZoneScoped();
         size_t pixelSize = FormatSize(FromVkFormat(format));
         size_t fullImageSize = width * height * depth * pixelSize * arrayLayers;
         vk::BufferCreateInfo stagingBufferInfo;
@@ -556,6 +558,7 @@ namespace FCT
     }
     void VK_Context::createStageBuffer()
     {
+        ZoneScoped();
         if (m_device) {
             m_device.waitIdle();
         }
@@ -617,6 +620,7 @@ namespace FCT
         auto it = m_inFlightUploads.begin();
         while (it != m_inFlightUploads.end()) {
             if (m_device.getFenceStatus(it->fence) == vk::Result::eSuccess) {
+                ZoneScopedN("CompleteInFlightUpload");
                 m_device.destroyFence(it->fence);
                 if (it->cmdBuffer) {
                     m_device.freeCommandBuffers(m_asyncTransferCmdPool, 1, &it->cmdBuffer);
@@ -633,6 +637,7 @@ namespace FCT
 
     size_t VK_Context::allocateStagingMemory(size_t size)
     {
+        ZoneScoped();
         if (size > m_maxStageBufferSize) {
             return SIZE_MAX;
         }
@@ -671,6 +676,7 @@ namespace FCT
     }
     void VK_Context::transferThreadLoop()
     {
+        tracy::SetThreadName("VK Async Transfer Thread");
         vk::CommandPoolCreateInfo poolInfo;
         poolInfo.setQueueFamilyIndex(m_transferQueueFamilyIndex)
                 .setFlags(vk::CommandPoolCreateFlagBits::eTransient |
@@ -684,6 +690,7 @@ namespace FCT
              TransferTask* task = nullptr;
              if (m_asyncTransferTaskQueue.pop(task)) {
                  if (task) {
+                     ZoneScopedN("AsyncTransferTask");
                      task->task();
                      delete task;
                  }
@@ -703,6 +710,7 @@ namespace FCT
 
     void VK_Context::executeAsyncTransfer(AsyncTransferParams params)
     {
+        ZoneScoped();
         size_t dataSize = params.data.size();
         size_t offset = allocateStagingMemory(dataSize);
 
@@ -809,6 +817,7 @@ namespace FCT
                                       std::vector<uint8_t> data,
                                       std::function<void()> onCompletion)
     {
+        ZoneScoped();
         AsyncTransferParams params{
             dstImage, width, height, depth, format, mipLevels, arrayLayers, aspectMask,
             std::move(data), onCompletion
@@ -830,6 +839,7 @@ namespace FCT
 
     void VK_Context::acquireImageOwnership(Image* image)
     {
+        ZoneScoped();
         if (m_transferQueueFamilyIndex == m_graphicsQueueFamilyIndex) {
             return;
         }
@@ -872,6 +882,7 @@ namespace FCT
 
     void VK_Context::createPlatform(ContextCreateFlags flag)
     {
+        ZoneScoped();
         auto queueFamily = m_phyDevice.getQueueFamilyProperties();
 
         m_transferQueueFamilyIndex = UINT32_MAX;
@@ -911,8 +922,9 @@ namespace FCT
             VK_KHR_SWAPCHAIN_EXTENSION_NAME
         };
         
+        vk::PhysicalDeviceFeatures supportedFeatures = m_phyDevice.getFeatures();
         vk::PhysicalDeviceFeatures deviceFeatures;
-        deviceFeatures.setSamplerAnisotropy(true);
+        deviceFeatures.setSamplerAnisotropy(supportedFeatures.samplerAnisotropy);
 
         vk::DeviceCreateInfo deviceCreateInfo;
         deviceCreateInfo.setQueueCreateInfos(queueCreateInfos)

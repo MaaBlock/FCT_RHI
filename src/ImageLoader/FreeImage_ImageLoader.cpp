@@ -20,6 +20,7 @@ namespace FCT {
     }
 
     ImageLoader::ImageData FreeImage_ImageLoader::loadFromMemory(const unsigned char* data, size_t size) {
+        ZoneScoped();
         FIMEMORY* hmem = FreeImage_OpenMemory((BYTE*)data, size);
         if (hmem == nullptr) {
             throw std::runtime_error("Could not open memory stream for image");
@@ -71,6 +72,8 @@ namespace FCT {
 
 
     ImageLoader::ImageData FreeImage_ImageLoader::load(const std::string& filename) {
+        ZoneScoped();
+        ZoneText(filename.c_str(), filename.size());
         FREE_IMAGE_FORMAT fif = FreeImage_GetFileType(filename.c_str(), 0);
         if (fif == FIF_UNKNOWN) {
             fif = FreeImage_GetFIFFromFilename(filename.c_str());
@@ -119,6 +122,7 @@ namespace FCT {
     }
 
     bool FreeImage_ImageLoader::save(const std::string& filename, const ImageData& imageData) {
+        ZoneScoped();
         FIBITMAP* dib = FreeImage_AllocateT(FIT_BITMAP, imageData.width, imageData.height, 32);
         if (!dib) {
             return false;

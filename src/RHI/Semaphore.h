@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/4/1.
 //
 #ifndef SEMAPHORE_H
@@ -8,10 +8,10 @@ namespace FCT
 {
     namespace RHI
     {
-        class Semaphore : public FCT::RefCount,public FCT::DeletableTrait<Semaphore>
+        class Semaphore : public FCT::NewRefCount<Semaphore, true>, public FCT::DeletableTrait<Semaphore>
         {
         public:
-            Semaphore() : FCT::RefCount(0)
+            Semaphore() : NewRefCount(0)
             {
 
             }
@@ -30,7 +30,7 @@ namespace FCT
              * @endcond
              */
             virtual void destroy() = 0;
-            void deleteThis() override {
+            void deleteThis() FCT_REFCOUNT_OVERRIDE {
                 if (!this->applyDeleter(this)) {
                     FCT_DELETE(this);
                 }

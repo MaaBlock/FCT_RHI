@@ -1,4 +1,4 @@
-﻿#ifndef FCT_CONTEXT_IH
+#ifndef FCT_CONTEXT_IH
 #define FCT_CONTEXT_IH
 #include "../UI/Window.h"
 namespace FCT {
@@ -8,17 +8,28 @@ namespace FCT {
 	{
 		while (m_ctxRunning) {
 			_waitForNextFrame();
-			m_flowControl->executeSubmitTickers();
-			_currentFlush();
+			{
+				ZoneScopedN("SubmitFrame");
+				m_flowControl->executeSubmitTickers();
+				_currentFlush();
+			}
+			FrameMarkNamed("RenderSubmit");
 		}
 	}
 	inline void Context::flush()
 	{
-		m_logicTask.consume_all([](LogicTaskData*& data) {
-			data->task();
-			FCT_DELETE(data);
-		});
-		_waitCurrentFlush();
+		ZoneScoped();
+		{
+			ZoneScopedN("ConsumeLogicTasks");
+			m_logicTask.consume_all([](LogicTaskData*& data) {
+				data->task();
+				FCT_DELETE(data);
+			});
+		}
+		{
+			ZoneScopedN("WaitSubmitFlush");
+			_waitCurrentFlush();
+		}
 		m_flowControl->executeSyncTickers();
 		_nextFrame();
 	}

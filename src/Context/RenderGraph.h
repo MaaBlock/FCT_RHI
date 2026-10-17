@@ -454,6 +454,7 @@ namespace FCT
         }
         void compile()
         {
+            ZoneScoped();
             buildGraph();
             allocateCommandBuffer();
             m_topologicalSortPasses = topologicalSortPasses();

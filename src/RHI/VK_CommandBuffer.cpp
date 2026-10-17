@@ -68,6 +68,7 @@ namespace FCT
 
         void VK_CommandBuffer::submit()
         {
+            ZoneScoped();
             vk::SubmitInfo submitInfo{};
             submitInfo.setCommandBuffers(m_commandBuffer);
             std::vector<vk::Semaphore> waitSemaphores;

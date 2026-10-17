@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/8/2.
 //
 
@@ -109,6 +109,42 @@ namespace FCT {
                 return vk::ImageLayout::eVideoEncodeQuantizationMapKHR;
             default:
                 return vk::ImageLayout(0);
+        }
+    }
+#endif
+#ifdef FCT_USE_D3D12
+    inline D3D12_RESOURCE_STATES ToD3D12ResourceState(ImageLayout e)
+    {
+        switch (e)
+        {
+            case ImageLayout::undefined:
+            case ImageLayout::general:
+                return D3D12_RESOURCE_STATE_COMMON;
+            case ImageLayout::colorAttachmentOptimal:
+            case ImageLayout::attachmentOptimal:
+                return D3D12_RESOURCE_STATE_RENDER_TARGET;
+            case ImageLayout::depthStencilAttachmentOptimal:
+            case ImageLayout::depthAttachmentOptimal:
+            case ImageLayout::stencilAttachmentOptimal:
+            case ImageLayout::depthReadOnlyStencilAttachmentOptimal:
+            case ImageLayout::depthAttachmentStencilReadOnlyOptimal:
+                return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            case ImageLayout::depthStencilReadOnlyOptimal:
+            case ImageLayout::depthReadOnlyOptimal:
+            case ImageLayout::stencilReadOnlyOptimal:
+                return D3D12_RESOURCE_STATE_DEPTH_READ;
+            case ImageLayout::shaderReadOnlyOptimal:
+                return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            case ImageLayout::readOnlyOptimal:
+                return D3D12_RESOURCE_STATE_GENERIC_READ;
+            case ImageLayout::transferSrcOptimal:
+                return D3D12_RESOURCE_STATE_COPY_SOURCE;
+            case ImageLayout::transferDstOptimal:
+                return D3D12_RESOURCE_STATE_COPY_DEST;
+            case ImageLayout::presentSrcKHR:
+                return D3D12_RESOURCE_STATE_PRESENT;
+            default:
+                return D3D12_RESOURCE_STATE_COMMON;
         }
     }
 #endif

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../ThirdParty.h"
 #include <string>
 #include <vector>
 

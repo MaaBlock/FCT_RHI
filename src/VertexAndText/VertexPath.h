@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/5/4.
 //
 
@@ -17,7 +17,7 @@ constexpr float VertexCommand_ArcTo = 6.0;
 constexpr float VertexCommand_SetTransform = 5.0;
 constexpr float VertexCommand_BeginPath = 7.0;
 constexpr float VertexCommand_EndPath = 8.0;
-class VertexPath : public RefCount
+class VertexPath : public NewRefCount<VertexPath, false>
 {
 protected:
     std::vector<float> m_commandQueue;

@@ -1,4 +1,4 @@
-﻿#include "./CommandBufferGraph.h"
+#include "./CommandBufferGraph.h"
 #include "./Context.h"
 #include "./Context.hpp"
 #include "../UI/Window.h"
@@ -323,6 +323,7 @@ namespace FCT {
 
     void CommandBufferGraph::swapBuffer()
     {
+        ZoneScoped();
         for (auto& wnd : m_windows)
         {
             if (m_windowOutputNodes.count(wnd))

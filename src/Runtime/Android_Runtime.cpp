@@ -50,11 +50,11 @@ namespace FCT{
 
     };
     void Runtime::init() {
-
+        g_common = FCT_NEW(Android_RuntimeCommon);
     }
 
     void Runtime::term() {
-
+        FCT_DELETE(g_common);
     }
 
     int Runtime::getDeviceWidth() {
@@ -66,11 +66,30 @@ namespace FCT{
     }
 
     Window *Runtime::createWindow() {
-        return new Android_Window;
+        return FCT_NEW(Android_Window);
     }
 
     Context *Runtime::createContext() {
-        return new VK_Context(g_common->vkContextCommon);
+        return FCT_NEW(VK_Context, g_common->vkContextCommon);
+    }
+
+    ImageLoader *Runtime::createImageLoader() {
+        return FCT_NEW(Stb_ImageLoader);
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_example_androidtutorial_FCTMainActivity_setNativeWorkingDir(JNIEnv *env, jobject thiz, jstring path) {
+    (void)thiz;
+    if (!path) {
+        return;
+    }
+    const char *utfChars = env->GetStringUTFChars(path, nullptr);
+    if (utfChars) {
+        std::error_code ec;
+        std::filesystem::current_path(std::filesystem::u8path(utfChars), ec);
+        env->ReleaseStringUTFChars(path, utfChars);
     }
 }
 

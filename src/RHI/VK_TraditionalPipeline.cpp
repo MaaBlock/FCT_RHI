@@ -82,6 +82,7 @@ namespace FCT
 
         void VK_TraditionalPipeline::create()
         {
+            ZoneScoped();
             generateDefaultResources();
             createDescriptorSetLayouts();
             m_shaderStages.push_back(static_cast<VK_VertexShader*>(m_vertexShader->vertexShader())->getStageInfo());
@@ -90,6 +91,7 @@ namespace FCT
         }
         void VK_TraditionalPipeline::generateDefaultResources()
         {
+            ZoneScoped();
             FCT::VertexShader* vs = nullptr;
             if (!m_vertexShader)
             {
@@ -116,6 +118,7 @@ namespace FCT
         }
         void VK_TraditionalPipeline::createDescriptorSetLayouts()
         {
+            ZoneScoped();
             std::map<uint32_t, std::set<uint32_t>> usedBindings;
             std::map<uint32_t, std::map<std::string, uint32_t>> resourceBindings; // 记录每个资源名称对应的binding
             std::map<uint32_t, std::vector<vk::DescriptorSetLayoutBinding>> setBindings;

@@ -13,6 +13,7 @@ namespace FCT {
 
     std::vector<char> Shaderc_ShaderCompiler::compile(const std::string& source, const std::string& entry_point, ShaderKind kind)
     {
+        ZoneScoped();
         fout << "编译着色器" << std::endl;
         fout << source << std::endl;
         auto result = m_compiler.CompileGlslToSpv(source.c_str(), source.size(), FCTShaderKindToShaderrcShaderKind(kind), "FCTShader"

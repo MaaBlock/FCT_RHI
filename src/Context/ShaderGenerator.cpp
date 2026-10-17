@@ -1,4 +1,4 @@
-﻿
+
 #include "../FCTAPI.h"
 
 namespace FCT
@@ -24,6 +24,7 @@ namespace FCT
                                                       const PixelLayout& pixelLayout, const std::vector<ConstLayout>& uniformLayouts, RHI::ShaderBinary& binary,
                                                       ResourceLayout& resourceLayout, const std::string& userCode)
     {
+        ZoneScoped();
         std::map<std::string, uint32_t> locations;
         std::map<std::string, std::pair<uint32_t, uint32_t>> uniformsLocations;
         std::map<std::string, std::pair<uint32_t, uint32_t>> constBufferLocations;
@@ -49,6 +50,7 @@ namespace FCT
         const std::vector<ConstLayout>& uniformLayouts, RHI::ShaderBinary& binary, ResourceLayout& resourceLayout,
         const std::string& userCode)
     {
+        ZoneScoped();
         std::stringstream ss;
         std::vector<TextureElement> texturesElements;
         std::vector<SamplerElement> samplersElements;

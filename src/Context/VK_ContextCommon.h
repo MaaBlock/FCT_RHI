@@ -24,8 +24,19 @@ namespace FCT {
         void init() {
             loaderVulkan();
             VULKAN_HPP_DEFAULT_DISPATCHER.init();
+            std::vector<vk::LayerProperties> availableLayers = vk::enumerateInstanceLayerProperties();
+            auto hasLayer = [&availableLayers](const char* name) {
+                for (const auto& layer : availableLayers) {
+                    if (std::strcmp(layer.layerName, name) == 0) {
+                        return true;
+                    }
+                }
+                return false;
+            };
 #ifdef FCT_DEBUG
-            m_layers.push_back("VK_LAYER_KHRONOS_validation");
+            if (hasLayer("VK_LAYER_KHRONOS_validation")) {
+                m_layers.push_back("VK_LAYER_KHRONOS_validation");
+            }
 #endif
             vk::ApplicationInfo appInfo;
             appInfo.setPApplicationName("Vulkan Application")
@@ -34,6 +45,14 @@ namespace FCT {
                    .setEngineVersion(VK_MAKE_VERSION(1, 0, 0))
                    .setApiVersion(VK_API_VERSION_1_2);
             std::vector<vk::ExtensionProperties> availableExtensions = vk::enumerateInstanceExtensionProperties();
+            auto hasExtension = [&availableExtensions](const char* name) {
+                for (const auto& ext : availableExtensions) {
+                    if (std::strcmp(ext.extensionName, name) == 0) {
+                        return true;
+                    }
+                }
+                return false;
+            };
 
             // 输出可用的扩展，用于调试
             fout << "Available Vulkan extensions:" << std::endl;
@@ -41,10 +60,6 @@ namespace FCT {
                 fout << "  " << extension.extensionName << std::endl;
             }
             std::vector<const char*> extensions = {
-#ifdef FCT_DEBUG
-                VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME,
-               // VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-#endif
 #ifdef FCT_ANDROID
                 VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
 #endif
@@ -52,17 +67,17 @@ namespace FCT {
                 VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #endif
                 VK_KHR_SURFACE_EXTENSION_NAME,
-                //VK_KHR_SWAPCHAIN_EXTENSION_NAME
             };
             vk::InstanceCreateInfo createInfo;
 #ifdef FCT_DEBUG
             std::vector<vk::ValidationFeatureEnableEXT> enabledValidationFeatures;
-            enabledValidationFeatures.push_back(vk::ValidationFeatureEnableEXT::eSynchronizationValidation);
-
             vk::ValidationFeaturesEXT validationFeatures;
-            validationFeatures.setEnabledValidationFeatures(enabledValidationFeatures);
-
-            createInfo.setPNext(&validationFeatures);
+            if (hasExtension(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME)) {
+                extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+                enabledValidationFeatures.push_back(vk::ValidationFeatureEnableEXT::eSynchronizationValidation);
+                validationFeatures.setEnabledValidationFeatures(enabledValidationFeatures);
+                createInfo.setPNext(&validationFeatures);
+            }
 #endif
             createInfo.setPEnabledLayerNames(m_layers)
                       .setPApplicationInfo(&appInfo)

@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/3/22.
 //
 #include "../ThirdParty.h"
@@ -6,6 +6,8 @@
 #define GLFW_UICOMMON_H
 namespace FCT{
 
+#ifndef FCT_UI_TASK_TYPES_H
+#define FCT_UI_TASK_TYPES_H
     using UITaskFunction = std::function<void(void *)>;
     struct UiTaskData {
         UITaskFunction task;
@@ -19,6 +21,7 @@ namespace FCT{
 		UiTaskData* data;
 	};
 	using UiTicker = std::function<void(void)>;
+#endif
 
 	class GLFW_UICommon {
 	public:

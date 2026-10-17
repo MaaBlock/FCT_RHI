@@ -26,7 +26,7 @@ namespace FCT {
         template<typename U> friend class UniquePtr;
 
         // 编译时检查，确保 T 没有继承自 RefCount
-        static_assert(!std::is_base_of<FCT::RefCount, T>::value,
+        static_assert(!std::is_base_of<FCT::RefCount, T>::value && !FCT::IsNewRefCountBase<T>::value,
             "UniquePtr cannot manage types derived from FCT::RefCount. Use a reference-counting pointer instead.");
 
         /**

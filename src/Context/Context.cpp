@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/3/16.
 //
 #include "../FCTAPI.h"
@@ -18,6 +18,7 @@ namespace FCT {
 
     Image* Context::loadTexture(const std::string& filename)
     {
+        ZoneScoped();
         auto data = m_imageLoader->load(filename);
         SingleBufferImage* image = new SingleBufferImage(this);
         image->width(data.width);
@@ -54,7 +55,7 @@ namespace FCT {
 
     Image* Context::loadTexture(const unsigned char* memData, size_t size)
     {
-
+        ZoneScoped();
         auto data = m_imageLoader->loadFromMemory(memData, size);
         SingleBufferImage* image = new SingleBufferImage(this);
         image->width(data.width);
@@ -91,7 +92,7 @@ namespace FCT {
     }
     Image* Context::loadTexture(std::vector<unsigned char> byteData, Format dstFormat)
     {
-
+        ZoneScoped();
         auto data = m_imageLoader->loadFromMemory(byteData.data(),byteData.size());
         SingleBufferImage* image = new SingleBufferImage(this);
         image->width(data.width);
@@ -104,6 +105,7 @@ namespace FCT {
     }
     Image* Context::loadTexture(const std::string& filename, Format dstFormat)
     {
+        ZoneScoped();
         auto data = m_imageLoader->load(filename);
         SingleBufferImage* image = new SingleBufferImage(this);
         image->width(data.width);
@@ -117,6 +119,7 @@ namespace FCT {
 
     Image* Context::loadCubeMap(const std::vector<std::string>& filenames)
     {
+        ZoneScoped();
         if (filenames.size() != 6) {
             ferr << "loadCubeMap: Expected 6 filenames, got " << filenames.size() << std::endl;
             return nullptr;
@@ -178,6 +181,7 @@ namespace FCT {
 
     Context::Context(Runtime* runtime)
     {
+        ZoneScoped();
         m_runtime = runtime;
         m_flowControl = new FlowControl();
         auto& m_submitTickers = m_flowControl->submitTickers();
@@ -194,6 +198,7 @@ namespace FCT {
         bool isInited = false;
         m_submitThread = std::thread([this,&isInited]
         {
+            tracy::SetThreadName("RHI Submit Thread");
             m_submitThreadId = std::this_thread::get_id();
             isInited = true;
             submitThread();
@@ -210,6 +215,7 @@ namespace FCT {
             {
                 std::this_thread::yield();
                 {
+                    ZoneScopedN("SwapBuffer / WaitGPU");
                     ScopeTimer waitGpuTimer("waitGpu");
                     m_cmdGraph->swapBuffer();
                     //swapBuffers();
@@ -223,6 +229,7 @@ namespace FCT {
             {
             [this]()
             {
+                ZoneScopedN("CheckRecreateSwapchainSync");
                 for (auto& window : m_bindWindows)
                 {
                     window->swapchain()->sync();
@@ -235,6 +242,7 @@ namespace FCT {
             {
             [this]()
             {
+                ZoneScopedN("AdvanceFrameIndex");
                 advanceLogicFrame();
                 advanceSubmitFrame();
             },
@@ -257,6 +265,7 @@ namespace FCT {
 
     void Context::create(ContextCreateFlags flag)
     {
+        ZoneScoped();
         createPlatform(flag);
         m_descriptorPool = createResource<RHI::DescriptorPool>();
         m_descriptorPool->create();
@@ -275,6 +284,7 @@ namespace FCT {
 
     StaticMesh<uint32_t>* Context::createMesh(const ModelMesh* modelMesh, const VertexLayout& layout)
     {
+        ZoneScoped();
         if (!modelMesh) {
             return nullptr;
         }
@@ -303,6 +313,7 @@ namespace FCT {
     StaticMesh<uint32_t>* Context::loadMesh(const std::string& filename, const std::string& meshName,
                                             const VertexLayout& layout)
     {
+        ZoneScoped();
         auto md = m_modelLoader->loadModel(filename);
         auto mMesh =  md->findMesh(meshName);
         return createMesh(mMesh,layout);

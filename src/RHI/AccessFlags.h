@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/7/30.
 //
 
@@ -47,8 +47,8 @@ namespace FCT {
 
         return result;
     }*/
-#endif
     FCT_TO_FLAGS(ToVkAccessFlags,ToVkAccessFlagBits,AccessFlag);
+#endif
 }
 
 

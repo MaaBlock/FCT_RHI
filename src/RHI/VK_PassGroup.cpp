@@ -1,4 +1,4 @@
-﻿#include "../ThirdParty.h"
+#include "../ThirdParty.h"
 #include "../Context/VK_Context.h"
 #include "./VK_PassGroup.h"
 #include "./VK_RenderTargetView.h"
@@ -30,6 +30,7 @@ namespace FCT
 
         void VK_PassGroup::create()
         {
+            ZoneScoped();
             collectAttachments();
             for (auto& pass : m_passes)
             {
@@ -147,6 +148,7 @@ namespace FCT
 
         void VK_PassGroup::beginSubmit(CommandBuffer* cmdBuf)
         {
+            ZoneScoped();
             collectImageViews();
             if (m_framebuffers[cmdBuf])
             {
@@ -206,6 +208,7 @@ namespace FCT
 
         void VK_PassGroup::endSubmit(CommandBuffer* cmdBuf)
         {
+            ZoneScoped();
             auto vkCmdBuf = static_cast<VK_CommandBuffer*>(cmdBuf);
             if (m_targetAttachments.empty() && m_depthAttachments.empty()) {
                 return;

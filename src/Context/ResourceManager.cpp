@@ -46,6 +46,7 @@ namespace FCT {
         tickerGraph[InnerTicker::ImageGraph_ChangeIndex] = {
             [this]()
             {
+                ZoneScopedN("ImageGraph_ChangeIndex");
                 for (auto image : m_needChangeIndexImages)
                 {
                     auto img = dynamic_cast<MutilBufferImage*>(image.img);
@@ -68,6 +69,7 @@ namespace FCT {
 
     Image* ResourceManager::allocateImage(std::string name, std::string dependency,ImageDesc desc)
     {
+        ZoneScoped();
         auto saved = m_dependencyGraph[dependency]->value;
         auto ret = ImageSaved(saved);
         if (ret.mutilBuffer)
@@ -106,6 +108,7 @@ namespace FCT {
 
     void ResourceManager::clearImage(std::string name)
     {
+        ZoneScoped();
         if (m_dependencyGraph.containsNode(name))
         {
             {
@@ -126,6 +129,7 @@ namespace FCT {
 
     void ResourceManager::updateGraph()
     {
+        ZoneScoped();
         auto status = m_dependencyGraph.update();
         if (!status.ok()) {
             return;
@@ -160,6 +164,7 @@ namespace FCT {
 
     void ResourceManager::resizeSub(std::string token, int width, int height)
     {
+        ZoneScoped();
         m_dependencyGraph.visitBFS(token,[width,height](ImageSaved img)
         {
             img.img->resize(width,height);
@@ -168,6 +173,7 @@ namespace FCT {
 
     void ResourceManager::resize(std::string token, int width, int height)
     {
+        ZoneScoped();
         m_dependencyGraph.visitBFS(token,[width,height](ImageSaved img)
         {
             img.img->resize(width,height);
@@ -185,6 +191,7 @@ namespace FCT
     }
     Image* ResourceManager::allocateTarget(std::string name, TargetDesc desc)
     {
+        ZoneScoped();
         auto ret = ImageSaved();
         auto img = m_resourceDevice->createResource<MutilBufferImage>();
         img->samples(desc.samples);

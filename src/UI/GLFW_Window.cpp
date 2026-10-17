@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/3/22.
 //
 #include "../FCTAPI.h"
@@ -35,6 +35,13 @@ FCT::SwapchainTargetWrapper* FCT::GLFW_Window::getSwapchainTarget(Context* srcCt
             ferr << "Failed to create Vulkan surface. Error code: " << res << std::endl;
         }
         m_swapchainNativeHandle = &m_vkSurface;
+        ret = new GLFW_SwapchainTargetWrapper(m_swapchainNativeHandle);
+    }
+#endif
+#ifdef FCT_USE_D3D12
+    else if (dynamic_cast<D3D12_Context*>(srcCtx))
+    {
+        m_swapchainNativeHandle = static_cast<void*>(glfwGetWin32Window(m_window));
         ret = new GLFW_SwapchainTargetWrapper(m_swapchainNativeHandle);
     }
 #endif

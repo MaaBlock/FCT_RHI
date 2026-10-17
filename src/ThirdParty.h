@@ -1,5 +1,6 @@
 #ifndef FCT_THRIDPARTY_HEADER
 #define FCT_THIRDPARTY_HEADER
+#include <FCT_Base.h>
 #define _USE_MATH_DEFINES
 //#define FCT_USE_GLAD
 #define FCT_USE_GLFW
@@ -15,8 +16,11 @@
 #define FCT_USE_ENTT
 #ifdef _WIN32
 	#define FCT_WIN32
+	#define FCT_USE_D3D12
 	#define NOMINMAX
 	#include <Windows.h>
+	#include <windowsx.h>
+	#include <shellapi.h>
 #endif
 #undef max
 
@@ -39,6 +43,10 @@
 #define GLFW_INCLUDE_VULKAN
 #endif
 	#include <GLFW/glfw3.h>
+#ifdef FCT_WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+	#include <GLFW/glfw3native.h>
+#endif
 #endif
 
 //#include <boost/lockfree/queue.hpp>
@@ -102,6 +110,7 @@
 #ifdef FCT_USE_VULKAN
 #include <vulkan/vulkan.h>
 #ifdef FCT_WIN32
+#define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan_win32.h>
 #endif
 #ifdef FCT_ANDROID
@@ -112,6 +121,13 @@ extern int main();
 #define VK_NO_PROTOTYPES
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
+#endif
+
+#ifdef FCT_USE_D3D12
+#include <d3d12.h>
+#include <dxgi1_6.h>
+#include <d3dcompiler.h>
+#include <wrl/client.h>
 #endif
 
 #ifdef FCT_USE_SPIRV

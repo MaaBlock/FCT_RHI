@@ -169,6 +169,7 @@ namespace FCT {
         }
 
         void VK_Swapchain::create(vk::SurfaceKHR surface, uint32_t width, uint32_t height) {
+            ZoneScoped();
             m_dstWidth = width;
             m_dstHeight = height;
             //dst size != real size
@@ -220,6 +221,7 @@ namespace FCT {
 
         bool VK_Swapchain::doRecreate()
         {
+            ZoneScoped();
             //reset all render finsh semaphores
             auto dc = m_ctx->getDevice();
             dc.waitIdle();
@@ -233,6 +235,7 @@ namespace FCT {
 
         void VK_Swapchain::sync()
         {
+            ZoneScoped();
             m_hasRecreatedInThisFrame = false;
             while (m_recreatedFlag)
             {
@@ -271,6 +274,7 @@ namespace FCT {
 
         void VK_Swapchain::present()
         {
+            ZoneScoped();
             auto dc = m_ctx->getDevice();
 
             std::vector<vk::Semaphore> semaphores;
@@ -285,6 +289,7 @@ namespace FCT {
                     .setPImageIndices(&m_currentImageIndex);
 
             try {
+                ZoneScopedN("vkQueuePresentKHR");
                 auto result = m_presentQueues[m_ctx->currentSubmitFrameIndex() % m_presentQueues.size()].presentKHR(presentInfo);
                 if (result == vk::Result::eSuboptimalKHR) {
                     m_recreatedFlag = true;
@@ -308,13 +313,17 @@ namespace FCT {
                 ferr << "fetal error in VK_Swapchain::present()" << e.what() << std::endl;
                 return;
             }
-            for (auto fence : m_renderFinshFences)
             {
-                fence->waitFor();
-                fence->reset();
-                //fout << "nomarl reset fence" << std::endl;
+                ZoneScopedN("WaitRenderFinishFences");
+                for (auto fence : m_renderFinshFences)
+                {
+                    fence->waitFor();
+                    fence->reset();
+                    //fout << "nomarl reset fence" << std::endl;
+                }
             }
             try {
+                ZoneScopedN("vkAcquireNextImageKHR");
                 auto nextResult = dc.acquireNextImageKHR(
                         m_swapchain,
                         UINT64_MAX,

@@ -32,6 +32,8 @@ namespace FCT
     }
     std::unique_ptr<ModelData> Assimp_ModelLoader::loadModel(const std::string& path)
     {
+        ZoneScoped();
+        ZoneText(path.c_str(), path.size());
         Assimp::Importer importer;
         const auto aiScene = importer.ReadFile(path,
             aiProcess_CalcTangentSpace |
@@ -116,6 +118,8 @@ namespace FCT
     }
     ModelInfo::SceneInfo Assimp_ModelLoader::loadModelInfo(const std::string& path)
     {
+        ZoneScoped();
+        ZoneText(path.c_str(), path.size());
         ModelInfo::SceneInfo info;
 
         Assimp::Importer importer;

@@ -21,6 +21,7 @@ namespace FCT
         auto& submitGraph = m_flowControl->submitTickers();
         submitGraph[RenderGraphTickers::RenderGraphSubmit] = {[this]()
         {
+            ZoneScopedN("RenderGraphSubmit");
             auto cmdGraph = m_commandBufferGraph;
             auto cmdBuf = cmdGraph->getCommandBuffer(m_commandBufferToken);
             cmdBuf->reset();
@@ -92,6 +93,7 @@ namespace FCT
         syncTickers[RenderGraphTickers::CheckRecompiledSync] = {
             [this]()
             {
+               ZoneScopedN("RenderGraphCheckRecompiled");
                if (m_needRecompiled)
                {
                    cleanUpCompile();
@@ -496,6 +498,7 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
 
     void RenderGraph::allocateResources()
     {
+        ZoneScoped();
         for (auto& [name, imageNode] : m_imageNodes) {
             imageNode->fillDefaultData();
         }
@@ -588,6 +591,7 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
     }
 
     void RenderGraph::createRHIPasses() {
+        ZoneScoped();
         for (const auto& [passName, passNode] : m_passNodes) {
             RHI::Pass* rhiPass = m_resourceDevice->createResource<RHI::Pass>();
 
@@ -775,6 +779,7 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
 
 
     void RenderGraph::createPassGroups() {
+        ZoneScoped();
         auto passGroups = m_passesUnions.getGroups();
 
         for (const auto& [groupLeader, groupMembers] : passGroups) {
@@ -886,6 +891,8 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
     }
     void RenderGraph::submitPassGroup(RHI::CommandBuffer* cmdBuffer,
                                      const std::string& groupLeader) {
+        ZoneScoped();
+        ZoneName(groupLeader.c_str(), groupLeader.size());
         auto passGroup = m_allocatedPassGroups.at(groupLeader);
         auto orderIt = m_passGroupOrders.find(groupLeader);
         if (orderIt == m_passGroupOrders.end()) {
@@ -911,6 +918,8 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
 
         for (size_t i = 0; i < orderedPassNames.size(); ++i) {
             const std::string& passName = orderedPassNames[i];
+            ZoneScopedN("SubmitPass");
+            ZoneName(passName.c_str(), passName.size());
 
             auto descIt = m_passDescs.find(passName);
             if (descIt != m_passDescs.end() && descIt->second.computeDispatcher) {
@@ -1116,6 +1125,7 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
 
     void RenderGraph::cleanUpCompile()
     {
+        ZoneScoped();
         m_commandBufferGraph->removeBuffer(m_commandBufferToken);
         for (auto& [name, pass] : m_allocatedPasses)
         {
@@ -1459,6 +1469,7 @@ void RenderGraph::cullPass(const std::string& passName)
 
     void RenderGraph::executeAllPassGroups(RHI::CommandBuffer* cmdBuffer)
     {
+        ZoneScoped();
         for (const std::string& groupLeader : m_passGroupExecutionOrder) {
             auto barrierIt = m_passGroupBarriers.find(groupLeader);
             if (barrierIt != m_passGroupBarriers.end()) {

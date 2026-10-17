@@ -8,10 +8,10 @@ namespace FCT
 {
     namespace RHI
     {
-        class Fence : public RefCount,public DeletableTrait<Fence>
+        class Fence : public NewRefCount<Fence, true>, public DeletableTrait<Fence>
         {
         public:
-            Fence() : RefCount(0)
+            Fence() : NewRefCount(0)
             {
                 m_signaled = false;
             }
@@ -29,7 +29,7 @@ namespace FCT
                 create();
             }
             virtual void destroy() = 0;
-            void deleteThis() override {
+            void deleteThis() FCT_REFCOUNT_OVERRIDE {
                 if (!this->applyDeleter(this)) {
                     FCT_DELETE(this);
                 }

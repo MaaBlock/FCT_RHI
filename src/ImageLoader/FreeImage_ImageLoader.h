@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ImageLoader.h"
+#ifdef FCT_USE_FREEIMAGE
 #include <FreeImage.h>
 
 namespace FCT {
@@ -21,3 +22,4 @@ namespace FCT {
     };
 
 } // namespace FCT
+#endif

@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/3/22.
 //
 #include "../FCTAPI.h"
@@ -10,6 +10,7 @@ namespace FCT
         bool inited = false;
         m_uiThread = std::thread([this,&inited]()
         {
+            tracy::SetThreadName("GLFW UI Thread");
             m_uiThreadId = std::this_thread::get_id();
             glfwInit();
             glfwSwapInterval(0);
@@ -19,6 +20,7 @@ namespace FCT
             {
                 count = 0;
                 while (!m_taskQueue.empty() && m_running && count < 10) {
+                    ZoneScopedN("UITask");
                     UITaskTrans trans;
                     m_taskQueue.pop(trans);
                     UiTaskData* task = trans.data;
