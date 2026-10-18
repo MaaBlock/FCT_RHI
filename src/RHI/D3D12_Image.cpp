@@ -65,6 +65,11 @@ namespace FCT
 
         void D3D12_Image::create()
         {
+            create(true);
+        }
+
+        void D3D12_Image::create(bool uploadData)
+        {
             m_resource.Reset();
 
             D3D12_HEAP_PROPERTIES heapProps{};
@@ -121,7 +126,7 @@ namespace FCT
                 return;
             }
 
-            if (m_initData.data && m_initData.size > 0)
+            if (uploadData && m_initData.data && m_initData.size > 0)
             {
                 m_ctx->transferDataToImage(
                     m_resource.Get(),
@@ -207,6 +212,28 @@ namespace FCT
             if (onCompletion && *onCompletion)
             {
                 (*onCompletion)();
+            }
+        }
+
+        void D3D12_Image::uploadAsync(std::vector<uint8_t> data, std::function<void()> callback)
+        {
+            if (m_resource && !data.empty())
+            {
+                m_ctx->transferDataToImage(
+                    m_resource.Get(),
+                    m_width,
+                    m_height,
+                    1,
+                    m_format,
+                    data.data(),
+                    data.size(),
+                    &m_currentState,
+                    1,
+                    m_arrayLayers);
+            }
+            if (callback)
+            {
+                callback();
             }
         }
 

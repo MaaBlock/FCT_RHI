@@ -179,6 +179,8 @@ namespace FCT
                 return;
             }
 
+            std::lock_guard<std::mutex> lock(m_ctx->uploadMutex());
+
             for (auto& waitDesc : m_waitSemaphores)
             {
                 if (waitDesc.semaphore)

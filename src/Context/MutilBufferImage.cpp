@@ -159,8 +159,11 @@ namespace FCT
         {
             FCT_SAFE_ADDREF(img);
         }
-        m_width = images[0]->width();
-        m_height = images[0]->height();
+        if (!images.empty())
+        {
+            m_width = images[0]->width();
+            m_height = images[0]->height();
+        }
         delete m_behavior;
         m_behavior = new MutilBufferAffterCreateImageBehavior(this);
         as(m_usage);
@@ -216,22 +219,22 @@ namespace FCT
 
     RHI::RenderTargetView* MutilBufferImage::currentTargetView()
     {
-        return m_rtvs[m_currentIndex];
+        return m_currentIndex < m_rtvs.size() ? m_rtvs[m_currentIndex] : nullptr;
     }
 
     RHI::TextureView* MutilBufferImage::currentTextureView()
     {
-        return m_tvs[m_currentIndex];
+        return m_currentIndex < m_tvs.size() ? m_tvs[m_currentIndex] : nullptr;
     }
 
     RHI::DepthStencilView* MutilBufferImage::currentDepthStencilView()
     {
-        return m_dsvs[m_currentIndex];
+        return m_currentIndex < m_dsvs.size() ? m_dsvs[m_currentIndex] : nullptr;
     }
 
     RHI::Image* MutilBufferImage::currentImage()
     {
-        return m_images[m_currentIndex];
+        return m_currentIndex < m_images.size() ? m_images[m_currentIndex] : nullptr;
     }
 
     void MutilBufferImage::updateData(const void* data, size_t dataSize)
@@ -251,6 +254,6 @@ namespace FCT
 
     size_t MutilBufferImage::textureViewHash() const
     {
-        return reinterpret_cast<size_t>(m_tvs[0]);
+        return !m_tvs.empty() ? reinterpret_cast<size_t>(m_tvs[0]) : 0;
     }
 }

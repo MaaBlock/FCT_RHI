@@ -1,4 +1,4 @@
-﻿#ifndef FCT_SWAPCAIN_H
+#ifndef FCT_SWAPCAIN_H
 #define FCT_SWAPCAIN_H
 #include "../Type/type.h"
 #include "Fence.h"
@@ -9,31 +9,37 @@
 #include "SwapchainEvent.h"
 namespace FCT
 {
+    class Context;
+    class MutilBufferImage;
+
     namespace RHI
     {
-        class Swapchain : public RefCount,public IEventSystem<EventSystemConfig::TriggerOnly>
+        class Image;
+
+        class Swapchain : public RefCount, public IEventSystem<EventSystemConfig::TriggerOnly>
         {
         public:
-            Swapchain()
-            {
-                m_nativeHandle = nullptr;
-                m_width = 0;
-                m_height = 0;
-                m_hasRecreatedInThisFrame = false;
-            }
+            Swapchain();
+            virtual ~Swapchain() = default;
+
             /**
              * @cond CHINESE
              * @return 缓存数
              * @endcond
              */
-            virtual uint32_t getImageCount() const = 0;
+            virtual uint32_t getImageCount() const
+            {
+                return static_cast<uint32_t>(m_fctImages.size());
+            }
             /**
              * @cond CHINESE
              * @return 与getSamples相同
              * @endcond
              */
-            virtual Samples getSampleCount() const = 0;
-            virtual ~Swapchain() = default;
+            virtual Samples getSampleCount() const
+            {
+                return Samples::sample_1;
+            }
             /**
              * @cond CHINESE
              * @brief 传递 surface
@@ -50,7 +56,7 @@ namespace FCT
              * @param height 目标高度
              * @endcond
              */
-            void size(int width,int height)
+            void size(int width, int height)
             {
                 m_dstWidth = width;
                 m_dstHeight = height;
@@ -61,7 +67,7 @@ namespace FCT
              * @return 交换链对应的图像，是一个多缓存图像
              * @endcond
              */
-            virtual FCT::Image* image() const = 0;
+            virtual FCT::Image* image() const;
             /**
              * @cond CHINESE
              * @brief 启用深度模板 缓存
@@ -84,7 +90,10 @@ namespace FCT
              * @return 交换链对应的图像的 采样 数
              * @endcond
              */
-            virtual Samples getSamples() const = 0;
+            virtual Samples getSamples() const
+            {
+                return Samples::sample_1;
+            }
             virtual bool acquireFirstImage() = 0;
             /**
              * @cond CHINESE
@@ -92,7 +101,10 @@ namespace FCT
              * @return 交换链对应的target
              * @endcond
              */
-            virtual ImageRenderTarget* target() const = 0;
+            virtual ImageRenderTarget* target() const
+            {
+                return m_target;
+            }
             /**
              * @cond CHINESE
              * @brief 用于渲染命令同步的，获取到 图像，gpu可以执行渲染命令
@@ -108,7 +120,7 @@ namespace FCT
              * @param height 新的height
              * @endcond
              */
-            virtual void needRecreate(int width,int height) = 0;
+            virtual void needRecreate(int width, int height);
             /**
              * @cond CHINESE
              * @note 主要用来实现max frame in flight，该fence是渲染所必须的
@@ -130,13 +142,15 @@ namespace FCT
              * @param semaphore 渲染完毕以后发出的 信号，是present命令所必须的
              * @endcond
              */
-            void addRenderFinshSemaphore(RHI::Semaphore* semaphore)  {
+            void addRenderFinshSemaphore(RHI::Semaphore* semaphore)
+            {
                 m_renderFinshSemaphores.push_back(semaphore);
             }
-            void clearRenderFinshSemaphores()  {
+            void clearRenderFinshSemaphores()
+            {
                 m_renderFinshSemaphores.clear();
             }
-            virtual void sync() = 0;
+            virtual void sync();
             /**
              * @cond CHINESE
              * @brief 在syncGraph里 的判断是否要recreate节点是否进行了重建交换链， 可持续一帧
@@ -166,9 +180,42 @@ namespace FCT
             {
                 return m_height;
             }
+
+            uint32_t getCurrentImageIndex() const
+            {
+                return m_currentImageIndex;
+            }
+
+        protected:
+            virtual bool doRecreate() = 0;
+
+            void bindSwapchainImages(FCT::Context* ctx);
+            void createDepthBuffer(FCT::Context* ctx, Format format, uint32_t imageCount);
+            void updateCurrentImageIndex(uint32_t index);
+            void waitAndResetRenderFinishFences();
+            void recreateRenderFinishSemaphores();
+
         protected:
             std::vector<RHI::Fence*> m_renderFinshFences;
             std::vector<RHI::Semaphore*> m_renderFinshSemaphores;
+            MutilBufferImage* m_fctImage = nullptr;
+            MutilBufferImage* m_depthStencilImage = nullptr;
+            std::vector<RHI::Image*> m_fctImages;
+            ImageRenderTarget* m_target = nullptr;
+            uint32_t m_currentImageIndex = 0;
+            bool m_recreatedFlag = false;
+            static constexpr uint32_t RECREATE_DEBOUNCE_MS = 50;
+            std::chrono::high_resolution_clock::time_point m_lastRecreateRequestTime;
+            /**
+             * @cond CHINESE
+             * @brief 窗口resize的时候传递的大小
+             * @endcond
+             * @cond ENGLISH
+             * @brief The size passed to the window resize callback
+             * @endcond
+             */
+            uint32_t m_pendingWidth = 0;
+            uint32_t m_pendingHeight = 0;
             /**
              * @cond CHINESE
              * @brief 交换链对应的surface

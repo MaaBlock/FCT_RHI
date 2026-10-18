@@ -217,7 +217,7 @@ namespace FCT
         ss << "//FCT Input Structure\n";
         ss << "struct ShaderIn {\n";
 
-        ss << "    float4 position : SV_POSITION;\n";
+        ss << "    float4 outPosition : SV_POSITION;\n";
         ss << generateFromPixelLayout(layout);
         ss << "};\n";
 
@@ -277,10 +277,10 @@ namespace FCT
     const PixelLayout& pixelLayout)
     {
         std::stringstream ss;
-        ss << "ShaderOut main(ShaderIn);\n";
+        ss << "ShaderOut main(ShaderIn sIn);\n";
         ss << "ShaderOut FCTEntry(ShaderIn sIn)\n";
         ss << " {\n";
-        ss << "    ShaderOut sOut;\n";
+        ss << "    ShaderOut sOut = (ShaderOut)0;\n";
         ss << "    \n";
 
         bool hasPosition = false;
@@ -328,7 +328,7 @@ namespace FCT
         std::stringstream ss;
         ss << "ShaderOut main(ShaderIn sIn);\n";
         ss << "ShaderOut FCTEntry(ShaderIn sIn) {\n";
-        ss << "    ShaderOut sOut;\n";
+        ss << "    ShaderOut sOut = (ShaderOut)0;\n";
         ss << "    \n";
         ss << "    sOut = main(sIn);\n";
         ss << "    \n";

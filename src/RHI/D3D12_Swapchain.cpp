@@ -14,16 +14,9 @@ namespace FCT
     {
         D3D12_Swapchain::D3D12_Swapchain(D3D12_Context* ctx)
             : m_ctx(ctx)
-            , m_fctImage(nullptr)
-            , m_depthStencilImage(nullptr)
-            , m_target(nullptr)
             , m_presentFinishSemaphore(nullptr)
             , m_format(Format::R8G8B8A8_UNORM)
             , m_bufferCount(3)
-            , m_currentImageIndex(0)
-            , m_needRecreate(false)
-            , m_pendingWidth(0)
-            , m_pendingHeight(0)
         {
         }
 
@@ -40,17 +33,17 @@ namespace FCT
             m_swapchain.Reset();
         }
 
-        FCT::Image* D3D12_Swapchain::image() const
-        {
-            return m_fctImage;
-        }
-
         void D3D12_Swapchain::cleanupOldResources()
         {
+            if (m_fctImage)
+            {
+                m_fctImage->create({});
+            }
             for (auto* img : m_fctImages)
             {
                 if (img)
                 {
+                    static_cast<D3D12_Image*>(img)->create(nullptr);
                     img->release();
                 }
             }
@@ -139,29 +132,7 @@ namespace FCT
                 m_fctImages.push_back(d3dImg);
             }
 
-            if (m_fctImage)
-            {
-                m_fctImage->create(m_fctImages);
-            }
-            else
-            {
-                m_fctImage = FCT_NEW(MutilBufferImage, m_ctx);
-                m_fctImage->renderTargetType(RenderTargetType::WindowTarget);
-                m_fctImage->as(ImageUsage::RenderTarget);
-                m_fctImage->create(m_fctImages);
-            }
-
-            if (!m_target)
-            {
-                m_target = FCT_NEW(ImageRenderTarget, m_ctx);
-                m_target->renderTargetType(RenderTargetType::WindowTarget);
-                m_target->bindTarget(m_fctImage);
-            }
-
-            if (m_depthStencilImage)
-            {
-                m_depthStencilImage->resize(m_width, m_height);
-            }
+            bindSwapchainImages(m_ctx);
         }
 
         void D3D12_Swapchain::create()
@@ -172,10 +143,6 @@ namespace FCT
                 m_dstHeight = m_pendingHeight;
             }
             cleanupOldResources();
-            if (m_fctImage)
-            {
-                m_fctImage->create({});
-            }
             createNativeSwapchain();
             buildSwapchainBuffers();
         }
@@ -186,20 +153,13 @@ namespace FCT
             {
                 return false;
             }
-            m_currentImageIndex = m_swapchain->GetCurrentBackBufferIndex();
+            uint32_t nextIdx = m_swapchain->GetCurrentBackBufferIndex();
             if (m_presentFinishSemaphore)
             {
                 m_presentFinishSemaphore->create();
                 m_presentFinishSemaphore->signalOnQueue(m_ctx->getGraphicsQueue());
             }
-            if (m_fctImage)
-            {
-                m_fctImage->changeCurrentIndex(m_currentImageIndex);
-            }
-            if (m_depthStencilImage)
-            {
-                m_depthStencilImage->changeCurrentIndex(m_currentImageIndex);
-            }
+            updateCurrentImageIndex(nextIdx);
             return true;
         }
 
@@ -211,74 +171,38 @@ namespace FCT
             }
 
             ID3D12CommandQueue* queue = m_ctx->getGraphicsQueue();
-            for (Semaphore* sem : m_renderFinshSemaphores)
             {
-                if (sem)
+                std::lock_guard<std::mutex> lock(m_ctx->uploadMutex());
+                for (Semaphore* sem : m_renderFinshSemaphores)
                 {
-                    static_cast<D3D12_Semaphore*>(sem)->waitOnQueue(queue);
+                    if (sem)
+                    {
+                        static_cast<D3D12_Semaphore*>(sem)->waitOnQueue(queue);
+                    }
                 }
+
+                m_swapchain->Present(0, 0);
             }
 
-            m_swapchain->Present(0, 0);
+            waitAndResetRenderFinishFences();
 
-            for (auto* fence : m_renderFinshFences)
-            {
-                if (fence)
-                {
-                    fence->waitFor();
-                    fence->reset();
-                }
-            }
-
-            m_currentImageIndex = m_swapchain->GetCurrentBackBufferIndex();
+            uint32_t nextIdx = m_swapchain->GetCurrentBackBufferIndex();
             if (m_presentFinishSemaphore)
             {
+                std::lock_guard<std::mutex> lock(m_ctx->uploadMutex());
                 m_presentFinishSemaphore->signalOnQueue(queue);
             }
 
-            if (m_fctImage)
-            {
-                m_fctImage->changeCurrentIndex(m_currentImageIndex);
-            }
-            if (m_depthStencilImage)
-            {
-                m_depthStencilImage->changeCurrentIndex(m_currentImageIndex);
-            }
-        }
-
-        void D3D12_Swapchain::needRecreate(int width, int height)
-        {
-            m_pendingWidth = static_cast<uint32_t>(width > 0 ? width : 0);
-            m_pendingHeight = static_cast<uint32_t>(height > 0 ? height : 0);
-            m_needRecreate = true;
+            updateCurrentImageIndex(nextIdx);
         }
 
         bool D3D12_Swapchain::doRecreate()
         {
+            ZoneScoped();
             m_ctx->waitForGpuIdle();
-            for (auto* sem : m_renderFinshSemaphores)
-            {
-                if (sem)
-                {
-                    sem->create();
-                }
-            }
+            recreateRenderFinishSemaphores();
             create();
             return acquireFirstImage();
-        }
-
-        void D3D12_Swapchain::sync()
-        {
-            m_hasRecreatedInThisFrame = false;
-            if (m_needRecreate && m_pendingWidth > 0 && m_pendingHeight > 0)
-            {
-                if (doRecreate())
-                {
-                    m_needRecreate = false;
-                    m_hasRecreatedInThisFrame = true;
-                    trigger(SwapchainEvent::Recreate{ m_width, m_height, this });
-                }
-            }
         }
 
         RHI::Semaphore* D3D12_Swapchain::getImageAvailableSemaphore()
@@ -293,18 +217,7 @@ namespace FCT
 
         void D3D12_Swapchain::enableDepthBuffer(Format format)
         {
-            m_depthStencilImage = m_ctx->createResource<MutilBufferImage>();
-            m_depthStencilImage->width(m_width);
-            m_depthStencilImage->height(m_height);
-            m_depthStencilImage->format(format);
-            m_depthStencilImage->samples(Samples::sample_1);
-            m_depthStencilImage->as(ImageUsage::DepthStencil);
-            m_depthStencilImage->imageCount(m_bufferCount);
-            m_depthStencilImage->create();
-            if (m_target)
-            {
-                m_target->setDepthStencilBuffer(m_depthStencilImage);
-            }
+            createDepthBuffer(m_ctx, format, m_bufferCount);
         }
     }
 }

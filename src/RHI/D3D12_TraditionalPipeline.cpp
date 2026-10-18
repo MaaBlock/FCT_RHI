@@ -102,7 +102,7 @@ namespace FCT
                 m_vertexShader->pixelLayout(m_pixelLayout);
                 m_vertexShader->create();
             }
-            if (!m_pixelShader)
+            if (!m_pixelShader && (!m_pass || !m_pass->renderTargets().empty()))
             {
                 m_pixelShader = m_ctx->createResource<FCT::PixelShader>();
                 m_pixelShader->pixelLayout(m_pixelLayout);
@@ -450,6 +450,26 @@ namespace FCT
             if (FAILED(hr))
             {
                 ferr << "Failed to create D3D12 GraphicsPipelineState, hr = " << std::hex << hr << std::dec << std::endl;
+                Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+                if (SUCCEEDED(m_ctx->getDevice()->QueryInterface(IID_PPV_ARGS(&infoQueue))))
+                {
+                    UINT64 msgCount = infoQueue->GetNumStoredMessages();
+                    for (UINT64 i = 0; i < msgCount; ++i)
+                    {
+                        SIZE_T msgLen = 0;
+                        infoQueue->GetMessage(i, nullptr, &msgLen);
+                        if (msgLen > 0)
+                        {
+                            std::vector<char> msgBuf(msgLen);
+                            auto* msg = reinterpret_cast<D3D12_MESSAGE*>(msgBuf.data());
+                            if (SUCCEEDED(infoQueue->GetMessage(i, msg, &msgLen)))
+                            {
+                                ferr << "[D3D12 InfoQueue] " << msg->pDescription << std::endl;
+                            }
+                        }
+                    }
+                    infoQueue->ClearStoredMessages();
+                }
             }
         }
 

@@ -88,9 +88,8 @@ namespace FCT
         Runtime* m_rt;
         Win32_UICommon* m_common;
         std::atomic<bool> m_running{false};
-        std::mutex m_wndProcCallbackMutex;
         std::unordered_map<uint32_t, Win32WndProcCallback> m_wndProcCallbacks;
-        uint32_t m_nextWndProcCallbackId{1};
+        std::atomic<uint32_t> m_nextWndProcCallbackId{1};
 #ifdef FCT_USE_VULKAN
         VkSurfaceKHR m_vkSurface;
 #endif

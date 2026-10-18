@@ -188,16 +188,20 @@ namespace FCT
 
     uint32_t Win32_Window::addWndProcCallback(Win32WndProcCallback callback)
     {
-        std::lock_guard<std::mutex> lock(m_wndProcCallbackMutex);
-        uint32_t id = m_nextWndProcCallbackId++;
-        m_wndProcCallbacks[id] = std::move(callback);
+        uint32_t id = m_nextWndProcCallbackId.fetch_add(1, std::memory_order_relaxed);
+        sendUiTask([this, id, cb = std::move(callback)](void*)
+        {
+            m_wndProcCallbacks[id] = cb;
+        });
         return id;
     }
 
     void Win32_Window::removeWndProcCallback(uint32_t id)
     {
-        std::lock_guard<std::mutex> lock(m_wndProcCallbackMutex);
-        m_wndProcCallbacks.erase(id);
+        sendUiTask([this, id](void*)
+        {
+            m_wndProcCallbacks.erase(id);
+        });
     }
 
     LRESULT CALLBACK Win32_Window::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -224,17 +228,14 @@ namespace FCT
 
     LRESULT Win32_Window::handleMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
+        for (const auto& pair : m_wndProcCallbacks)
         {
-            std::lock_guard<std::mutex> lock(m_wndProcCallbackMutex);
-            for (const auto& pair : m_wndProcCallbacks)
+            if (pair.second)
             {
-                if (pair.second)
+                LRESULT res = pair.second(hWnd, message, wParam, lParam);
+                if (res)
                 {
-                    LRESULT res = pair.second(hWnd, message, wParam, lParam);
-                    if (res)
-                    {
-                        return res;
-                    }
+                    return res;
                 }
             }
         }
@@ -448,7 +449,7 @@ namespace FCT
                 int w = rc.right - rc.left;
                 if (w > 0)
                 {
-                    m_width = w;
+                    return w;
                 }
             }
         }
@@ -465,7 +466,7 @@ namespace FCT
                 int h = rc.bottom - rc.top;
                 if (h > 0)
                 {
-                    m_height = h;
+                    return h;
                 }
             }
         }

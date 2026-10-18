@@ -16,10 +16,12 @@ namespace FCT
             ~D3D12_Image() override;
 
             void create() override;
+            void create(bool uploadData) override;
             void create(ID3D12Resource* externalResource, D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_PRESENT);
 
             void updateData(const void* data, size_t dataSize) override;
             void updateData(const void* data, size_t dataSize, Fence* fence, std::function<void()>* onCompletion) override;
+            void uploadAsync(std::vector<uint8_t> data, std::function<void()> callback) override;
 
             ID3D12Resource* getResource() const { return m_resource.Get(); }
             D3D12_RESOURCE_STATES getResourceState() const { return m_currentState; }

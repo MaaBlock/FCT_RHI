@@ -51,6 +51,25 @@ namespace FCT
             }
             if (m_activeBoundPass != pass)
             {
+                if (m_activeBoundPass && d3dCmd->commandList())
+                {
+                    ID3D12GraphicsCommandList* cmdList = d3dCmd->commandList();
+                    const D3D12_RESOURCE_STATES shaderReadState =
+                        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+                    for (const auto& [slot, img] : m_activeBoundPass->renderTargets())
+                    {
+                        if (img && img->currentTextureView() && img->currentImage())
+                        {
+                            static_cast<D3D12_Image*>(img->currentImage())->transitionState(cmdList, shaderReadState);
+                        }
+                    }
+                    if (m_activeBoundPass->depthStencil() &&
+                        m_activeBoundPass->depthStencil()->currentTextureView() &&
+                        m_activeBoundPass->depthStencil()->currentImage())
+                    {
+                        static_cast<D3D12_Image*>(m_activeBoundPass->depthStencil()->currentImage())->transitionState(cmdList, shaderReadState);
+                    }
+                }
                 pass->bindTargets(d3dCmd);
                 pass->executeClear(d3dCmd);
                 m_activeBoundPass = pass;
@@ -99,6 +118,8 @@ namespace FCT
             }
 
             ID3D12GraphicsCommandList* cmdList = d3dCmd->commandList();
+            const D3D12_RESOURCE_STATES shaderReadState =
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
             for (Pass* pass : m_passes)
             {
                 if (!pass)
@@ -107,18 +128,25 @@ namespace FCT
                 }
                 for (const auto& [slot, img] : pass->renderTargets())
                 {
-                    if (!img)
+                    if (!img || !img->currentImage())
                     {
                         continue;
                     }
-                    if (m_transitionsToPresent || img->getType() == RenderTargetType::WindowTarget)
+                    auto* d3dImg = static_cast<D3D12_Image*>(img->currentImage());
+                    if (img->getType() == RenderTargetType::WindowTarget || (m_transitionsToPresent && !img->currentTextureView()))
                     {
-                        auto* d3dImg = static_cast<D3D12_Image*>(img->currentImage());
-                        if (d3dImg)
-                        {
-                            d3dImg->transitionState(cmdList, D3D12_RESOURCE_STATE_PRESENT);
-                        }
+                        d3dImg->transitionState(cmdList, D3D12_RESOURCE_STATE_PRESENT);
                     }
+                    else if (img->currentTextureView())
+                    {
+                        d3dImg->transitionState(cmdList, shaderReadState);
+                    }
+                }
+                if (pass->depthStencil() &&
+                    pass->depthStencil()->currentTextureView() &&
+                    pass->depthStencil()->currentImage())
+                {
+                    static_cast<D3D12_Image*>(pass->depthStencil()->currentImage())->transitionState(cmdList, shaderReadState);
                 }
             }
 

@@ -103,6 +103,7 @@ namespace FCT
             std::function<void()> callback = nullptr);
 
         void waitForGpuIdle();
+        std::mutex& uploadMutex() { return m_uploadMutex; }
 
     private:
         void createDeviceAndQueues();

@@ -88,14 +88,13 @@ namespace FCT
                 outBaseIndex = 0;
                 return true;
             }
-            std::lock_guard<std::mutex> lock(m_cbvSrvUavMutex);
-            if (m_cbvSrvUavNextIndex + count > m_cbvSrvUavCapacity)
+            uint32_t baseIndex = m_cbvSrvUavNextIndex.fetch_add(count, std::memory_order_relaxed);
+            if (baseIndex + count > m_cbvSrvUavCapacity)
             {
                 ferr << "D3D12 shader-visible CBV_SRV_UAV descriptor heap exhausted!" << std::endl;
                 return false;
             }
-            outBaseIndex = m_cbvSrvUavNextIndex;
-            m_cbvSrvUavNextIndex += count;
+            outBaseIndex = baseIndex;
             outCpuHandle = getCbvSrvUavCpuHandle(outBaseIndex);
             outGpuHandle = getCbvSrvUavGpuHandle(outBaseIndex);
             return true;
@@ -114,14 +113,13 @@ namespace FCT
                 outBaseIndex = 0;
                 return true;
             }
-            std::lock_guard<std::mutex> lock(m_samplerMutex);
-            if (m_samplerNextIndex + count > m_samplerCapacity)
+            uint32_t baseIndex = m_samplerNextIndex.fetch_add(count, std::memory_order_relaxed);
+            if (baseIndex + count > m_samplerCapacity)
             {
                 ferr << "D3D12 shader-visible SAMPLER descriptor heap exhausted!" << std::endl;
                 return false;
             }
-            outBaseIndex = m_samplerNextIndex;
-            m_samplerNextIndex += count;
+            outBaseIndex = baseIndex;
             outCpuHandle = getSamplerCpuHandle(outBaseIndex);
             outGpuHandle = getSamplerGpuHandle(outBaseIndex);
             return true;

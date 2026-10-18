@@ -782,8 +782,15 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
         ZoneScoped();
         auto passGroups = m_passesUnions.getGroups();
 
-        for (const auto& [groupLeader, groupMembers] : passGroups) {
+        for (const auto& [groupLeader, rawGroupMembers] : passGroups) {
             RHI::PassGroup* passGroup = m_resourceDevice->createResource<RHI::PassGroup>();
+
+            std::vector<std::string> groupMembers = rawGroupMembers;
+            std::sort(groupMembers.begin(), groupMembers.end(), [this](const std::string& a, const std::string& b) {
+                auto itA = std::find(m_topologicalSortPasses.begin(), m_topologicalSortPasses.end(), a);
+                auto itB = std::find(m_topologicalSortPasses.begin(), m_topologicalSortPasses.end(), b);
+                return itA < itB;
+            });
 
             std::vector<std::string> orderedPassNames;
 
@@ -987,7 +994,12 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
             auto groupIt = passGroups.find(groupLeader);
             if (groupIt == passGroups.end()) continue;
 
-            const auto& groupMembers = groupIt->second;
+            std::vector<std::string> groupMembers = groupIt->second;
+            std::sort(groupMembers.begin(), groupMembers.end(), [this](const std::string& a, const std::string& b) {
+                auto itA = std::find(m_topologicalSortPasses.begin(), m_topologicalSortPasses.end(), a);
+                auto itB = std::find(m_topologicalSortPasses.begin(), m_topologicalSortPasses.end(), b);
+                return itA < itB;
+            });
 
             std::vector<BarrierInfo> barriers = checkBarriersBeforePassGroup(groupLeader, groupMembers, imageStates);
 

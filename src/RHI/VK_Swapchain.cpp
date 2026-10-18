@@ -134,7 +134,6 @@ namespace FCT {
             }
         }
         void VK_Swapchain::createImagesAndTargets() {
-
             for (auto image : m_images) {
                 auto ret = FCT_NEW(VK_Image,m_ctx);
                 ret->samples(getSamples());
@@ -146,42 +145,18 @@ namespace FCT {
 
                 m_fctImages.push_back(ret);
             }
-            if (m_fctImage)
-            {
-                m_fctImage->create(m_fctImages);
-            } else
-            {
-                m_fctImage = FCT_NEW(MutilBufferImage,m_ctx);
-                m_fctImage->renderTargetType(RenderTargetType::WindowTarget);
-                m_fctImage->as(ImageUsage::RenderTarget);
-                m_fctImage->create(m_fctImages);
-            }
-            if (m_target)
-            {
-
-            } else
-            {
-                m_target = FCT_NEW(ImageRenderTarget,m_ctx);
-                m_target->renderTargetType(RenderTargetType::WindowTarget);
-                m_target->bindTarget(m_fctImage);
-            }
-
+            bindSwapchainImages(m_ctx);
         }
 
         void VK_Swapchain::create(vk::SurfaceKHR surface, uint32_t width, uint32_t height) {
             ZoneScoped();
             m_dstWidth = width;
             m_dstHeight = height;
-            //dst size != real size
             cleanupOldResources();
             m_surface = surface;
             setupQueueFamilies();
             createSwapchain(m_dstWidth, m_dstHeight);
             createImagesAndTargets();
-
-            if (m_depthStencilImage) {
-                m_depthStencilImage->resize(m_width, m_height);
-            }
         }
 
         void VK_Swapchain::create()
@@ -215,61 +190,14 @@ namespace FCT {
         }
 
 
-        uint32_t VK_Swapchain::getCurrentImageIndex() const {
-            return m_currentImageIndex;
-        }
-
         bool VK_Swapchain::doRecreate()
         {
             ZoneScoped();
-            //reset all render finsh semaphores
             auto dc = m_ctx->getDevice();
             dc.waitIdle();
-            for (auto semaphore : m_renderFinshSemaphores)
-            {
-                semaphore->create();
-            }
+            recreateRenderFinishSemaphores();
             create();
             return acquireFirstImage();
-        }
-
-        void VK_Swapchain::sync()
-        {
-            ZoneScoped();
-            m_hasRecreatedInThisFrame = false;
-            while (m_recreatedFlag)
-            {
-                using namespace std::chrono;
-                auto now = high_resolution_clock::now();
-                auto timeSinceRequest = duration_cast<milliseconds>(
-                    now - m_lastRecreateRequestTime
-                ).count();
-                while (timeSinceRequest < RECREATE_DEBOUNCE_MS || !m_pendingWidth || !m_pendingHeight)
-                {
-                    now = high_resolution_clock::now();
-                    timeSinceRequest = duration_cast<milliseconds>(
-                        now - m_lastRecreateRequestTime
-                    ).count();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                }
-                if (doRecreate())
-                {
-                    now = high_resolution_clock::now();
-                    timeSinceRequest = duration_cast<milliseconds>(
-                        now - m_lastRecreateRequestTime
-                    ).count();
-                    if (timeSinceRequest > RECREATE_DEBOUNCE_MS && m_pendingWidth == m_dstWidth && m_pendingHeight == m_dstHeight)
-                        m_recreatedFlag = false;
-                }
-                m_hasRecreatedInThisFrame = true;
-            }
-            if (m_hasRecreatedInThisFrame)
-            {
-                trigger(SwapchainEvent::Recreate{
-                    m_width, m_height,
-                    this
-                });
-            }
         }
 
         void VK_Swapchain::present()
@@ -293,20 +221,12 @@ namespace FCT {
                 auto result = m_presentQueues[m_ctx->currentSubmitFrameIndex() % m_presentQueues.size()].presentKHR(presentInfo);
                 if (result == vk::Result::eSuboptimalKHR) {
                     m_recreatedFlag = true;
-                    for (auto fence : m_renderFinshFences)
-                    {
-                        fence->waitFor();
-                        fence->reset();
-                    }
+                    waitAndResetRenderFinishFences();
                     return;
                 }
             } catch (vk::OutOfDateKHRError& e) {
                 m_recreatedFlag = true;
-                for (auto fence : m_renderFinshFences)
-                {
-                    fence->waitFor();
-                    fence->reset();
-                }
+                waitAndResetRenderFinishFences();
                 return;
             } catch (vk::SystemError& e)
             {
@@ -315,12 +235,7 @@ namespace FCT {
             }
             {
                 ZoneScopedN("WaitRenderFinishFences");
-                for (auto fence : m_renderFinshFences)
-                {
-                    fence->waitFor();
-                    fence->reset();
-                    //fout << "nomarl reset fence" << std::endl;
-                }
+                waitAndResetRenderFinishFences();
             }
             try {
                 ZoneScopedN("vkAcquireNextImageKHR");
@@ -344,11 +259,7 @@ namespace FCT {
                 return;
             }
 
-            m_fctImage->changeCurrentIndex(m_currentImageIndex);
-            if (m_depthStencilImage)
-            {
-                m_depthStencilImage->changeCurrentIndex(m_currentImageIndex);
-            }
+            updateCurrentImageIndex(m_currentImageIndex);
         }
 
         bool VK_Swapchain::acquireFirstImage() {
@@ -370,57 +281,37 @@ namespace FCT {
                         return false;
                     }
                 } else
-            {
-                fence = FCT_NEW(VK_Fence,m_ctx);
-                fence->create();
-                auto nextResult = dc.acquireNextImageKHR(
-                        m_swapchain,
-                        UINT64_MAX,
-                        nullptr,
-                        fence->fence(),
-                        &m_currentImageIndex
-                );
-                fence->waitFor();
-                fence->release();
-                if (nextResult == vk::Result::eSuboptimalKHR) {
-                    return false;
+                {
+                    fence = FCT_NEW(VK_Fence,m_ctx);
+                    fence->create();
+                    auto nextResult = dc.acquireNextImageKHR(
+                            m_swapchain,
+                            UINT64_MAX,
+                            nullptr,
+                            fence->fence(),
+                            &m_currentImageIndex
+                    );
+                    fence->waitFor();
+                    fence->release();
+                    if (nextResult == vk::Result::eSuboptimalKHR) {
+                        return false;
+                    }
                 }
-            }
             } catch (vk::OutOfDateKHRError& e)
             {
                 return false;
             }
-            m_fctImage->changeCurrentIndex(m_currentImageIndex);
-            if (m_depthStencilImage)
-            {
-                m_depthStencilImage->changeCurrentIndex(m_currentImageIndex);
-            }
+            updateCurrentImageIndex(m_currentImageIndex);
             return true;
-        }
-
-        void VK_Swapchain::needRecreate(int width, int height)
-        {
-            m_lastRecreateRequestTime = std::chrono::high_resolution_clock::now();
-            m_recreatedFlag = true;
-            m_pendingWidth = width;
-            m_pendingHeight = height;
-            //m_needRecreated = true;
-            //m_recreated = false;
-            //FCT_WAIT_FOR(m_recreated);
         }
 
         bool VK_Swapchain::processRecreate(bool waitFence)
         {
-            auto dc = m_ctx->getDevice();
             if (m_needRecreated)
             {
                 if (waitFence)
                 {
-                    for (auto fence : m_renderFinshFences)
-                    {
-                        fence->waitFor();
-                        fence->reset();
-                    }
+                    waitAndResetRenderFinishFences();
                 }
                 create();
                 m_needRecreated = false;
@@ -439,16 +330,6 @@ namespace FCT {
             return FromVkFormat(m_imageFormat);
         }
 
-        Samples VK_Swapchain::getSamples() const
-        {
-            return Samples::sample_1;
-        }
-
-        ImageRenderTarget* VK_Swapchain::target() const
-        {
-            return m_target;
-        }
-
         void VK_Swapchain::setPresentFinshSemaphore(RHI::Semaphore* semaphore)
         {
             m_prensentFinshSemphore = static_cast<VK_Semaphore*>(semaphore);
@@ -459,23 +340,9 @@ namespace FCT {
             return m_prensentFinshSemphore;
         }
 
-        Samples VK_Swapchain::getSampleCount() const
-        {
-            return Samples::sample_1;
-        }
-
-
         void VK_Swapchain::enableDepthBuffer(Format format)
         {
-            m_depthStencilImage = m_ctx->createResource<MutilBufferImage>();
-            m_depthStencilImage->width(m_width);
-            m_depthStencilImage->height(m_height);
-            m_depthStencilImage->format(format);
-            m_depthStencilImage->samples(Samples::sample_1);
-            m_depthStencilImage->as(ImageUsage::DepthStencil);
-            m_depthStencilImage->imageCount(m_images.size());
-            m_depthStencilImage->create();
-            m_target->setDepthStencilBuffer(m_depthStencilImage);
+            createDepthBuffer(m_ctx, format, static_cast<uint32_t>(m_images.size()));
         }
     }
 }

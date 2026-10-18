@@ -54,15 +54,13 @@ namespace FCT
             D3D12_GPU_DESCRIPTOR_HANDLE m_cbvSrvUavGpuStart{0};
             uint32_t m_cbvSrvUavDescriptorSize;
             uint32_t m_cbvSrvUavCapacity;
-            uint32_t m_cbvSrvUavNextIndex;
-            std::mutex m_cbvSrvUavMutex;
+            std::atomic<uint32_t> m_cbvSrvUavNextIndex{0};
 
             D3D12_CPU_DESCRIPTOR_HANDLE m_samplerCpuStart{0};
             D3D12_GPU_DESCRIPTOR_HANDLE m_samplerGpuStart{0};
             uint32_t m_samplerDescriptorSize;
             uint32_t m_samplerCapacity;
-            uint32_t m_samplerNextIndex;
-            std::mutex m_samplerMutex;
+            std::atomic<uint32_t> m_samplerNextIndex{0};
         };
     }
 }
