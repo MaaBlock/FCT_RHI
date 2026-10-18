@@ -69,8 +69,18 @@ namespace FCT{
         return FCT_NEW(Android_Window);
     }
 
+    Window *Runtime::createWindow(WindowBackend backend) {
+        (void)backend;
+        return createWindow();
+    }
+
     Context *Runtime::createContext() {
         return FCT_NEW(VK_Context, g_common->vkContextCommon);
+    }
+
+    Context *Runtime::createContext(ContextBackend backend) {
+        (void)backend;
+        return createContext();
     }
 
     ImageLoader *Runtime::createImageLoader() {

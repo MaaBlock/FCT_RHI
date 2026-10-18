@@ -96,8 +96,18 @@ file(GLOB RHI_VULKAN_MODULE_HEADERS
         CONFIGURE_DEPENDS
         "./src/RHI/VK_*.h"
 )
-list(REMOVE_ITEM RHI_MODULE_SOURCES ${RHI_VULKAN_MODULE_SOURCES})
-list(REMOVE_ITEM RHI_MODULE_HEADERS ${RHI_VULKAN_MODULE_HEADERS})
+file(GLOB RHI_D3D12_MODULE_SOURCES
+        LIST_DIRECTORIES false
+        CONFIGURE_DEPENDS
+        "./src/RHI/D3D12_*.cpp"
+)
+file(GLOB RHI_D3D12_MODULE_HEADERS
+        LIST_DIRECTORIES false
+        CONFIGURE_DEPENDS
+        "./src/RHI/D3D12_*.h"
+)
+list(REMOVE_ITEM RHI_MODULE_SOURCES ${RHI_VULKAN_MODULE_SOURCES} ${RHI_D3D12_MODULE_SOURCES})
+list(REMOVE_ITEM RHI_MODULE_HEADERS ${RHI_VULKAN_MODULE_HEADERS} ${RHI_D3D12_MODULE_HEADERS})
 file(GLOB CONTEXT_VULKAN_MODULE_SOURCES
         LIST_DIRECTORIES false
         CONFIGURE_DEPENDS
@@ -108,13 +118,23 @@ file(GLOB CONTEXT_VULKAN_MODULE_HEADERS
         CONFIGURE_DEPENDS
         "./src/Context/VK_*.h"
 )
+file(GLOB CONTEXT_D3D12_MODULE_SOURCES
+        LIST_DIRECTORIES false
+        CONFIGURE_DEPENDS
+        "./src/Context/D3D12_*.cpp"
+)
+file(GLOB CONTEXT_D3D12_MODULE_HEADERS
+        LIST_DIRECTORIES false
+        CONFIGURE_DEPENDS
+        "./src/Context/D3D12_*.h"
+)
 file(GLOB CONTEXT_SHARDEC_MODULE_SOURCES
         LIST_DIRECTORIES false
         CONFIGURE_DEPENDS
         "./src/Context/Shaderc_*.cpp"
 )
 
-list(REMOVE_ITEM CONTEXT_MODULE_SOURCES ${CONTEXT_SHARDEC_MODULE_SOURCES})
+list(REMOVE_ITEM CONTEXT_MODULE_SOURCES ${CONTEXT_SHARDEC_MODULE_SOURCES} ${CONTEXT_D3D12_MODULE_SOURCES})
 file(GLOB DEBUGTOOLS_MODULE_HEADERS
         LIST_DIRECTORIES false
         CONFIGURE_DEPENDS
@@ -159,7 +179,13 @@ file(GLOB UI_GLFW_MODULE_HEADERS
         "./src/UI/GLFW_*.h"
 )
 
-list(REMOVE_ITEM UI_MODULE_SOURCES ${UI_GLFW_MODULE_SOURCES})
+file(GLOB UI_WIN32_MODULE_SOURCES
+        LIST_DIRECTORIES false
+        CONFIGURE_DEPENDS
+        "./src/UI/Win32_*.cpp"
+)
+
+list(REMOVE_ITEM UI_MODULE_SOURCES ${UI_GLFW_MODULE_SOURCES} ${UI_WIN32_MODULE_SOURCES})
 
 file(GLOB UI_ANDROID_MODULE_SOURCES
         LIST_DIRECTORIES false
@@ -244,6 +270,19 @@ else()
     set(CMAKE_CXX_STANDARD 20)
 endif ()
 
+if(NOT TARGET FCT_Base)
+    message(STATUS "FCT_Base target not found, fetching via FetchContent...")
+    include(FetchContent)
+    FetchContent_Declare(
+        FCT_Base
+        GIT_REPOSITORY https://github.com/MaaBlock/FCT_Base.git
+        GIT_TAG master
+    )
+    FetchContent_MakeAvailable(FCT_Base)
+else()
+    message(STATUS "Using existing FCT_Base target")
+endif()
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/work_contract work_contract)
 
 add_library(FCT STATIC
@@ -271,6 +310,17 @@ target_sources(FCT PRIVATE
 if (FCT_WIN32)
     target_sources(FCT PRIVATE
         ${RUNTIME_WIN32_MODULE_SOURCES}
+        ${UI_WIN32_MODULE_SOURCES}
+        ${CONTEXT_D3D12_MODULE_SOURCES}
+        ${RHI_D3D12_MODULE_SOURCES}
+        ${CONTEXT_D3D12_MODULE_HEADERS}
+        ${RHI_D3D12_MODULE_HEADERS}
+    )
+    target_link_libraries(FCT PUBLIC
+        d3d12
+        dxgi
+        dxguid
+        d3dcompiler
     )
 endif()
 
@@ -281,11 +331,18 @@ if (FCT_LINUX)
 endif()
 
 if (FCT_ANDROID) 
+    file(GLOB IMAGELOADER_STB_MODULE_SOURCES
+            LIST_DIRECTORIES false
+            CONFIGURE_DEPENDS
+            "./src/ImageLoader/Stb_*.cpp"
+    )
     target_sources(FCT PRIVATE
+        ${RUNTIME_ANDROID_MODULE_SOURCES}
         ${UI_ANDROID_MODULE_SOURCES}
         ${DEBUGTOOLS_ANDROID_MODULE_SOURCES}
+        ${IMAGELOADER_STB_MODULE_SOURCES}
     )
-    target_link_libraries(FCT PUBLIC Vulkan::Headers)
+    target_link_libraries(FCT PUBLIC Vulkan::Headers vulkan)
 
 else()
     target_sources(FCT PRIVATE
@@ -336,6 +393,7 @@ find_package(spirv_cross_hlsl CONFIG REQUIRED)
 find_package(spirv_cross_cpp CONFIG REQUIRED)
 find_package(spirv_cross_reflect CONFIG REQUIRED)
 target_link_libraries(FCT PUBLIC
+        FCT_Base
         work_contract
         spirv-cross-core
         spirv-cross-glsl
@@ -377,6 +435,8 @@ set(ALL_HEADER_FILES
         ${RHI_MODULE_HEADERS}
         ${RHI_VULKAN_MODULE_HEADERS}
         ${CONTEXT_VULKAN_MODULE_HEADERS}
+        ${RHI_D3D12_MODULE_HEADERS}
+        ${CONTEXT_D3D12_MODULE_HEADERS}
         ${DEBUGTOOLS_MODULE_HEADERS}
         ${UI_MODULE_HEADERS}
         ${UI_GLFW_MODULE_HEADERS}
@@ -422,6 +482,9 @@ message(STATUS "Total headers copied: ${CMAKE_LIST_LENGTH} ALL_HEADER_FILES")
 
 function(target_link_fct_libraries target_name)
     target_link_libraries(${target_name} FCT)
+    if(COMMAND target_link_fct_base_libraries)
+        target_link_fct_base_libraries(${target_name})
+    endif()
 
     if (FCT_ANDROID)
         target_link_libraries(${target_name}
