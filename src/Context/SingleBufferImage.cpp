@@ -3,9 +3,42 @@
 //
 
 #include "../headers.h"
+#include <atomic>
+#include <mutex>
+#include <unordered_map>
 
 namespace FCT
 {
+    namespace
+    {
+        std::atomic<size_t> g_nextSingleBufferTextureViewId{1};
+        std::mutex g_singleBufferViewIdMutex;
+        std::unordered_map<const SingleBufferImage*, size_t> g_singleBufferViewIds;
+
+        void assignNewTextureViewId(const SingleBufferImage* img)
+        {
+            size_t newId = g_nextSingleBufferTextureViewId.fetch_add(1, std::memory_order_relaxed);
+            std::lock_guard<std::mutex> lock(g_singleBufferViewIdMutex);
+            g_singleBufferViewIds[img] = newId;
+        }
+
+        void removeTextureViewId(const SingleBufferImage* img)
+        {
+            std::lock_guard<std::mutex> lock(g_singleBufferViewIdMutex);
+            g_singleBufferViewIds.erase(img);
+        }
+
+        size_t lookupTextureViewId(const SingleBufferImage* img, RHI::TextureView* fallbackSrv)
+        {
+            std::lock_guard<std::mutex> lock(g_singleBufferViewIdMutex);
+            auto it = g_singleBufferViewIds.find(img);
+            if (it != g_singleBufferViewIds.end()) {
+                return it->second;
+            }
+            return reinterpret_cast<size_t>(fallbackSrv);
+        }
+    }
+
     SingleBufferAfterCreateImageBehavior::SingleBufferAfterCreateImageBehavior(Image* image) {
         m_image = image;
     }
@@ -24,6 +57,7 @@ namespace FCT
     }
 
     SingleBufferImage::~SingleBufferImage() {
+        removeTextureViewId(this);
         FCT_SAFE_RELEASE(m_image);
         FCT_SAFE_RELEASE(m_rtv);
         FCT_SAFE_RELEASE(m_srv);
@@ -44,12 +78,13 @@ namespace FCT
         m_image->isCubeMap(m_isCubeMap);
         m_image->initData(m_initData);
         m_image->usage(m_usage);
-        m_image->create(uploadData); // Pass the flag
+        m_image->create(uploadData);
         if (m_usage & ImageUsage::Texture && !m_srv)
         {
             m_srv = m_ctx->createResource<RHI::TextureView>();
             m_srv->image(m_image);
             m_srv->create();
+            assignNewTextureViewId(this);
         }
         delete m_behavior;
         m_behavior = new SingleBufferAfterCreateImageBehavior(this);
@@ -119,6 +154,7 @@ namespace FCT
             m_srv->release();
             m_srv = nullptr;
         }
+        removeTextureViewId(this);
 
         m_width = width;
         m_height = height;
@@ -131,6 +167,13 @@ namespace FCT
         m_image->usage(currentUsage);
         m_image->create();
 
+        if (currentUsage & ImageUsage::Texture && !m_srv)
+        {
+            m_srv = m_ctx->createResource<RHI::TextureView>();
+            m_srv->image(m_image);
+            m_srv->create();
+            assignNewTextureViewId(this);
+        }
         as(currentUsage);
     }
 
@@ -163,6 +206,6 @@ namespace FCT
 
     size_t SingleBufferImage::textureViewHash() const
     {
-        return reinterpret_cast<size_t>(m_srv);
+        return lookupTextureViewId(this, m_srv);
     }
 }

@@ -187,6 +187,35 @@ namespace FCT
 {
     void ResourceManager::resizeImage(std::string name, int width, int height)
     {
+        if (m_dependencyGraph.containsNode(name))
+        {
+            resize(name, width, height);
+        }
+    }
+
+    Image* ResourceManager::registerExternalTarget(std::string name, Image* externalImg)
+    {
+        ZoneScoped();
+        if (!externalImg)
+        {
+            return nullptr;
+        }
+        externalImg->addRef();
+        ImageSaved ret;
+        ret.img = externalImg;
+        ret.mutilBuffer = (dynamic_cast<MutilBufferImage*>(externalImg) != nullptr);
+        ret.autoIndex = ret.mutilBuffer;
+        m_dependencyGraph[name] = {
+            ret,
+            {},
+            {},
+        };
+        updateGraph();
+        return ret.img;
+    }
+
+    void ResourceManager_UnusedStub()
+    {
 
     }
     Image* ResourceManager::allocateTarget(std::string name, TargetDesc desc)

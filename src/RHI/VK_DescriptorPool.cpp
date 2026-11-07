@@ -13,18 +13,18 @@ namespace FCT
 
         void VK_DescriptorPool::create()
         {
+            const uint32_t frames = std::max(1u, m_ctx->maxFrameInFlight());
             std::vector<vk::DescriptorPoolSize> poolSizes = {
-                {vk::DescriptorType::eUniformBuffer, m_ctx->maxFrameInFlight() * 100},
-
-                {vk::DescriptorType::eCombinedImageSampler, m_ctx->maxFrameInFlight() * 100},
-                {vk::DescriptorType::eStorageBuffer, m_ctx->maxFrameInFlight() * 50},
-                {vk::DescriptorType::eStorageImage, m_ctx->maxFrameInFlight() * 50},
-                {vk::DescriptorType::eSampledImage, m_ctx->maxFrameInFlight() * 100},
-                {vk::DescriptorType::eSampler, m_ctx->maxFrameInFlight() * 50}
+                {vk::DescriptorType::eUniformBuffer, frames * 32768},
+                {vk::DescriptorType::eCombinedImageSampler, frames * 32768},
+                {vk::DescriptorType::eStorageBuffer, frames * 8192},
+                {vk::DescriptorType::eStorageImage, frames * 8192},
+                {vk::DescriptorType::eSampledImage, frames * 32768},
+                {vk::DescriptorType::eSampler, frames * 16384}
             };
 
             vk::DescriptorPoolCreateInfo poolInfo{};
-            poolInfo.maxSets = 1000;
+            poolInfo.maxSets = frames * 65536;
             poolInfo.setPoolSizes(poolSizes);
 
             poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;

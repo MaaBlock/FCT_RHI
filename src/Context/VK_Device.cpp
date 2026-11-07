@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/7/27.
 //
 #include "./VK_Context.h"
@@ -25,6 +25,7 @@
 #include "../RHI/VK_DepthStencilView.h"
 #include "../RHI/VK_TextureView.h"
 #include "../RHI/VK_RasterizationState.h"
+#include "../RHI/VK_DepthStencilState.h"
 #include "../RHI/VK_BlendState.h"
 #include "../RHI/VK_Sampler.h"
 #include "../RHI/VK_TraditionalPipeline.h"
@@ -172,5 +173,10 @@ namespace FCT
     RasterizationState* VK_Device::newRasterizationState()
     {
         return FCT_NEW(VK_RasterizationState,m_ctx);
+    }
+
+    DepthStencilState* VK_Device::newDepthStencilState()
+    {
+        return FCT_NEW(RHI::VK_DepthStencilState, m_ctx);
     }
 }

@@ -123,25 +123,38 @@ namespace FCT {
 
     bool FreeImage_ImageLoader::save(const std::string& filename, const ImageData& imageData) {
         ZoneScoped();
+        if (imageData.width <= 0 || imageData.height <= 0 || imageData.data.empty()) {
+            return false;
+        }
         FIBITMAP* dib = FreeImage_AllocateT(FIT_BITMAP, imageData.width, imageData.height, 32);
         if (!dib) {
             return false;
         }
 
-        unsigned int pitch = FreeImage_GetPitch(dib);
-        FreeImage_ConvertFromRawBits(
-            (BYTE*)imageData.data.data(),
-            imageData.width,
-            imageData.height,
-            pitch,
-            32,
-            FI_RGBA_RED_MASK,
-            FI_RGBA_GREEN_MASK,
-            FI_RGBA_BLUE_MASK
-        );
+        const int width = imageData.width;
+        const int height = imageData.height;
+        const int channels = imageData.channels > 0 ? imageData.channels : 4;
+        for (int y = 0; y < height; ++y) {
+            BYTE* dstLine = FreeImage_GetScanLine(dib, height - 1 - y);
+            const unsigned char* srcLine = imageData.data.data() +
+                static_cast<size_t>(y) * static_cast<size_t>(width) * static_cast<size_t>(channels);
+            for (int x = 0; x < width; ++x) {
+                const unsigned char r = srcLine[x * channels + 0];
+                const unsigned char g = (channels > 1) ? srcLine[x * channels + 1] : r;
+                const unsigned char b = (channels > 2) ? srcLine[x * channels + 2] : r;
+                const unsigned char a = (channels > 3) ? srcLine[x * channels + 3] : 255;
+                dstLine[x * 4 + FI_RGBA_RED] = r;
+                dstLine[x * 4 + FI_RGBA_GREEN] = g;
+                dstLine[x * 4 + FI_RGBA_BLUE] = b;
+                dstLine[x * 4 + FI_RGBA_ALPHA] = a;
+            }
+        }
 
         FREE_IMAGE_FORMAT fif = FreeImage_GetFIFFromFilename(filename.c_str());
-        bool success = FreeImage_Save(fif, dib, filename.c_str());
+        if (fif == FIF_UNKNOWN) {
+            fif = FIF_PNG;
+        }
+        bool success = FreeImage_Save(fif, dib, filename.c_str()) != FALSE;
 
         FreeImage_Unload(dib);
 

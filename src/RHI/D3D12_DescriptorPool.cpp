@@ -24,10 +24,13 @@ namespace FCT
 
         void D3D12_DescriptorPool::destroy()
         {
+            std::lock_guard<std::mutex> lock(m_freeListMutex);
             m_cbvSrvUavHeap.Reset();
             m_samplerHeap.Reset();
             m_cbvSrvUavNextIndex = 0;
             m_samplerNextIndex = 0;
+            m_cbvSrvUavFreeRanges.clear();
+            m_samplerFreeRanges.clear();
         }
 
         void D3D12_DescriptorPool::createCbvSrvUavHeap()
@@ -88,6 +91,28 @@ namespace FCT
                 outBaseIndex = 0;
                 return true;
             }
+            {
+                std::lock_guard<std::mutex> lock(m_freeListMutex);
+                for (auto it = m_cbvSrvUavFreeRanges.begin(); it != m_cbvSrvUavFreeRanges.end(); ++it)
+                {
+                    if (it->second >= count)
+                    {
+                        outBaseIndex = it->first;
+                        if (it->second == count)
+                        {
+                            m_cbvSrvUavFreeRanges.erase(it);
+                        }
+                        else
+                        {
+                            it->first += count;
+                            it->second -= count;
+                        }
+                        outCpuHandle = getCbvSrvUavCpuHandle(outBaseIndex);
+                        outGpuHandle = getCbvSrvUavGpuHandle(outBaseIndex);
+                        return true;
+                    }
+                }
+            }
             uint32_t baseIndex = m_cbvSrvUavNextIndex.fetch_add(count, std::memory_order_relaxed);
             if (baseIndex + count > m_cbvSrvUavCapacity)
             {
@@ -113,6 +138,28 @@ namespace FCT
                 outBaseIndex = 0;
                 return true;
             }
+            {
+                std::lock_guard<std::mutex> lock(m_freeListMutex);
+                for (auto it = m_samplerFreeRanges.begin(); it != m_samplerFreeRanges.end(); ++it)
+                {
+                    if (it->second >= count)
+                    {
+                        outBaseIndex = it->first;
+                        if (it->second == count)
+                        {
+                            m_samplerFreeRanges.erase(it);
+                        }
+                        else
+                        {
+                            it->first += count;
+                            it->second -= count;
+                        }
+                        outCpuHandle = getSamplerCpuHandle(outBaseIndex);
+                        outGpuHandle = getSamplerGpuHandle(outBaseIndex);
+                        return true;
+                    }
+                }
+            }
             uint32_t baseIndex = m_samplerNextIndex.fetch_add(count, std::memory_order_relaxed);
             if (baseIndex + count > m_samplerCapacity)
             {
@@ -123,6 +170,26 @@ namespace FCT
             outCpuHandle = getSamplerCpuHandle(outBaseIndex);
             outGpuHandle = getSamplerGpuHandle(outBaseIndex);
             return true;
+        }
+
+        void D3D12_DescriptorPool::freeCbvSrvUavRange(uint32_t baseIndex, uint32_t count)
+        {
+            if (count == 0)
+            {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(m_freeListMutex);
+            m_cbvSrvUavFreeRanges.emplace_back(baseIndex, count);
+        }
+
+        void D3D12_DescriptorPool::freeSamplerRange(uint32_t baseIndex, uint32_t count)
+        {
+            if (count == 0)
+            {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(m_freeListMutex);
+            m_samplerFreeRanges.emplace_back(baseIndex, count);
         }
 
         D3D12_CPU_DESCRIPTOR_HANDLE D3D12_DescriptorPool::getCbvSrvUavCpuHandle(uint32_t index) const

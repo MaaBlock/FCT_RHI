@@ -31,7 +31,7 @@ static StaticMesh<IndexType>* createCube(Context* ctx, float size = 1.0f,
 
             float halfSize = size * 0.5f;
 
-            Vec3 vertices[8] = {
+            Vec3<> vertices[8] = {
                 Vec3(-halfSize, -halfSize, -halfSize),
                 Vec3(halfSize, -halfSize, -halfSize),
                 Vec3(halfSize, halfSize, -halfSize),
@@ -114,7 +114,7 @@ static StaticMesh<IndexType>* createCube(Context* ctx, float size = 1.0f,
 
             segments = std::max(3, segments);
 
-            std::vector<Vec3> positions;
+            std::vector<Vec3<>> positions;
             std::vector<Vec4> colors;
             std::vector<Vec2> texCoords;
             std::vector<IndexType> indices;

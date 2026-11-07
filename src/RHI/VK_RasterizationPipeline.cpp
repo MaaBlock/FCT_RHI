@@ -37,20 +37,29 @@ namespace FCT::RHI
         switch (resource->getType())
         {
         case PipelineResourceType::BlendState:
+            FCT_SAFE_RELEASE(m_blendState);
             m_blendState = static_cast<VK_BlendState*>(resource);
             m_blendState->addRef();
             break;
         case PipelineResourceType::RasterizationState:
+            FCT_SAFE_RELEASE(m_rasterizationState);
             m_rasterizationState = static_cast<VK_RasterizationState*>(resource);
             m_rasterizationState->addRef();
             break;
         case PipelineResourceType::ViewportState:
+            FCT_SAFE_RELEASE(m_viewportState);
             m_viewportState = static_cast<VK_ViewportState*>(resource);
             m_viewportState->addRef();
             break;
         case PipelineResourceType::InputLayout:
+            FCT_SAFE_RELEASE(m_inputLayout);
             m_inputLayout = static_cast<VK_InputLayout*>(resource);
             m_inputLayout->addRef();
+            break;
+        case PipelineResourceType::DepthStencilState:
+            FCT_SAFE_RELEASE(m_depthStencilState);
+            m_depthStencilState = static_cast<VK_DepthStencilState*>(resource);
+            m_depthStencilState->addRef();
             break;
         default:
             ferr << "Unsupported pipeline resource type: " << (unsigned int)(resource->getType()) << std::endl;

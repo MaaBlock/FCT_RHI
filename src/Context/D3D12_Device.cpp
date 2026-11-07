@@ -149,6 +149,11 @@ namespace FCT
         return new D3D12_RasterizationState(m_ctx);
     }
 
+    DepthStencilState* D3D12_Device::newDepthStencilState()
+    {
+        return new RHI::D3D12_DepthStencilState(m_ctx);
+    }
+
     BlendState* D3D12_Device::newBlendState()
     {
         return new D3D12_BlendState(m_ctx);

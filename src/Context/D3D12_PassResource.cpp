@@ -16,6 +16,46 @@ namespace FCT
     {
     }
 
+    D3D12_PassResource::~D3D12_PassResource()
+    {
+        releaseAllocatedTables();
+    }
+
+    void D3D12_PassResource::releaseAllocatedTables()
+    {
+        if (!m_ctx)
+        {
+            return;
+        }
+        auto* pool = static_cast<RHI::D3D12_DescriptorPool*>(m_ctx->getDescriptorPool());
+        if (!pool)
+        {
+            return;
+        }
+        for (auto& [pipeline, frameVec] : m_pipelineTables)
+        {
+            for (auto& tables : frameVec)
+            {
+                for (int s = 0; s < 4; ++s)
+                {
+                    if (tables.cbvSrvTable[s].allocated && tables.cbvSrvTable[s].count > 0)
+                    {
+                        pool->freeCbvSrvUavRange(tables.cbvSrvTable[s].baseIndex, tables.cbvSrvTable[s].count);
+                        tables.cbvSrvTable[s].allocated = false;
+                        tables.cbvSrvTable[s].count = 0;
+                    }
+                    if (tables.samplerTable[s].allocated && tables.samplerTable[s].count > 0)
+                    {
+                        pool->freeSamplerRange(tables.samplerTable[s].baseIndex, tables.samplerTable[s].count);
+                        tables.samplerTable[s].allocated = false;
+                        tables.samplerTable[s].count = 0;
+                    }
+                }
+            }
+        }
+        m_pipelineTables.clear();
+    }
+
     void D3D12_PassResource::markAllDescriptorSetsNeedRecreate()
     {
         for (auto& [pipeline, frameVec] : m_pipelineTables)
@@ -139,6 +179,10 @@ namespace FCT
                 uint32_t neededCount = static_cast<uint32_t>(setLayout.cbvSrvSlots.size());
                 if (!slice.allocated || slice.count < neededCount)
                 {
+                    if (slice.allocated && slice.count > 0)
+                    {
+                        pool->freeCbvSrvUavRange(slice.baseIndex, slice.count);
+                    }
                     slice.allocated = pool->allocCbvSrvUavRange(
                         neededCount,
                         slice.cpuHandle,
@@ -206,6 +250,10 @@ namespace FCT
                 uint32_t neededCount = static_cast<uint32_t>(setLayout.samplerSlots.size());
                 if (!slice.allocated || slice.count < neededCount)
                 {
+                    if (slice.allocated && slice.count > 0)
+                    {
+                        pool->freeSamplerRange(slice.baseIndex, slice.count);
+                    }
                     slice.allocated = pool->allocSamplerRange(
                         neededCount,
                         slice.cpuHandle,

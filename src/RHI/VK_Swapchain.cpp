@@ -78,6 +78,9 @@ namespace FCT {
             if (capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst) {
                 usage |= vk::ImageUsageFlagBits::eTransferDst;
             }
+            if (capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferSrc) {
+                usage |= vk::ImageUsageFlagBits::eTransferSrc;
+            }
             createInfo.setPresentMode(presentMode)
                       .setImageUsage(usage)
                       .setImageArrayLayers(1)

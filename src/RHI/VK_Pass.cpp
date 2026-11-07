@@ -64,74 +64,9 @@ namespace FCT
         }
 
 
-       void VK_Pass::beginSubmit(CommandBuffer* cmdBuf)
+        void VK_Pass::beginSubmit(CommandBuffer* cmdBuf)
         {
-            if (!m_clearValue.types) {
-                return;
-            }
-
-            auto vkCmdBuf = static_cast<VK_CommandBuffer*>(cmdBuf);
-            std::vector<vk::ClearAttachment> clearAttachments;
-
-            if (m_clearValue.types & ClearType::color) {
-                for (const auto& [slot, attachmentIndex] : m_targetAttachmentIndices) {
-                    if (slot < m_renderTargetRefs.size() && m_renderTargetRefs[slot].attachment != VK_ATTACHMENT_UNUSED) {
-                        vk::ClearAttachment clearAttachment;
-                        clearAttachment.aspectMask = vk::ImageAspectFlagBits::eColor;
-                        clearAttachment.colorAttachment = slot;
-                        clearAttachment.clearValue.color = vk::ClearColorValue(std::array<float, 4>{
-                            m_clearValue.color.x,
-                            m_clearValue.color.y,
-                            m_clearValue.color.z,
-                            m_clearValue.color.w
-                        });
-                        clearAttachments.push_back(clearAttachment);
-                    }
-                }
-            }
-
-            if (m_depthStencil && m_depthStencilAttachmentIndex != UINT32_MAX &&
-                ((m_clearValue.types & ClearType::depth) || (m_clearValue.types & ClearType::stencil))) {
-
-                vk::ClearAttachment clearAttachment;
-                clearAttachment.aspectMask = vk::ImageAspectFlagBits::eNone;
-
-                if (m_clearValue.types & ClearType::depth) {
-                    clearAttachment.aspectMask |= vk::ImageAspectFlagBits::eDepth;
-                }
-
-                if (m_clearValue.types & ClearType::stencil) {
-                    clearAttachment.aspectMask |= vk::ImageAspectFlagBits::eStencil;
-                }
-
-                clearAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue(
-                    m_clearValue.depth,
-                    m_clearValue.stencil
-                );
-
-                clearAttachments.push_back(clearAttachment);
-                }
-
-            if (!clearAttachments.empty()) {
-                vk::ClearRect clearRect;
-                clearRect.rect.offset = vk::Offset2D(0, 0);
-
-                uint32_t width = 0, height = 0;
-                if (!m_renderTargets.empty()) {
-                    auto& firstTarget = m_renderTargets.begin()->second;
-                    width = firstTarget->width();
-                    height = firstTarget->height();
-                } else if (m_depthStencil) {
-                    width = m_depthStencil->width();
-                    height = m_depthStencil->height();
-                }
-
-                clearRect.rect.extent = vk::Extent2D(width, height);
-                clearRect.baseArrayLayer = 0;
-                clearRect.layerCount = 1;
-
-                vkCmdBuf->commandBuffer().clearAttachments(clearAttachments, clearRect);
-            }
+            executeClear(cmdBuf);
         }
 
         void VK_Pass::endSubmit()
@@ -175,17 +110,22 @@ namespace FCT
                     clearAttachment.aspectMask |= vk::ImageAspectFlagBits::eDepth;
                 }
 
-                if (m_clearValue.types & ClearType::stencil) {
+                const Format dsFormat = m_depthStencil->format();
+                const bool hasStencil = (dsFormat == Format::D24_UNORM_S8_UINT ||
+                                         dsFormat == Format::D32_SFLOAT_S8_UINT);
+                if ((m_clearValue.types & ClearType::stencil) && hasStencil) {
                     clearAttachment.aspectMask |= vk::ImageAspectFlagBits::eStencil;
                 }
 
-                clearAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue(
-                    m_clearValue.depth,
-                    m_clearValue.stencil
-                );
+                if (clearAttachment.aspectMask != vk::ImageAspectFlagBits::eNone) {
+                    clearAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue(
+                        m_clearValue.depth,
+                        m_clearValue.stencil
+                    );
 
-                clearAttachments.push_back(clearAttachment);
+                    clearAttachments.push_back(clearAttachment);
                 }
+            }
 
             if (!clearAttachments.empty()) {
                 vk::ClearRect clearRect;

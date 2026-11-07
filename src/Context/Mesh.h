@@ -67,6 +67,15 @@ namespace FCT
             }
         }
 
+        void drawIndirect(RHI::CommandBuffer* cmdBuf, void* indirectBuffer, size_t byteOffset, uint32_t drawCount = 1)
+        {
+            if (m_gpuIndex && indirectBuffer) {
+                cmdBuf->drawIndexedIndirect(indirectBuffer, byteOffset, drawCount, sizeof(RHI::DrawIndexedIndirectCommand));
+            } else {
+                draw(cmdBuf, 1);
+            }
+        }
+
         void updateVertexData()
         {
             if (m_gpuVertex) {
@@ -202,6 +211,15 @@ namespace FCT
                 m_cpuVertex->clear();
             }
             m_cpuIndices.clear();
+        }
+
+        void drawIndirect(RHI::CommandBuffer* cmdBuf, void* indirectBuffer, size_t byteOffset, uint32_t drawCount = 1)
+        {
+            if (m_gpuIndex && indirectBuffer) {
+                cmdBuf->drawIndexedIndirect(indirectBuffer, byteOffset, drawCount, sizeof(RHI::DrawIndexedIndirectCommand));
+            } else {
+                draw(cmdBuf, 1);
+            }
         }
 
         void updateVertexData()

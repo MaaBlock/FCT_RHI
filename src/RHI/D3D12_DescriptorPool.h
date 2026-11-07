@@ -36,6 +36,9 @@ namespace FCT
                 D3D12_GPU_DESCRIPTOR_HANDLE& outGpuHandle,
                 uint32_t& outBaseIndex);
 
+            void freeCbvSrvUavRange(uint32_t baseIndex, uint32_t count);
+            void freeSamplerRange(uint32_t baseIndex, uint32_t count);
+
             D3D12_CPU_DESCRIPTOR_HANDLE getCbvSrvUavCpuHandle(uint32_t index) const;
             D3D12_GPU_DESCRIPTOR_HANDLE getCbvSrvUavGpuHandle(uint32_t index) const;
             D3D12_CPU_DESCRIPTOR_HANDLE getSamplerCpuHandle(uint32_t index) const;
@@ -61,6 +64,9 @@ namespace FCT
             uint32_t m_samplerDescriptorSize;
             uint32_t m_samplerCapacity;
             std::atomic<uint32_t> m_samplerNextIndex{0};
+            std::mutex m_freeListMutex;
+            std::vector<std::pair<uint32_t, uint32_t>> m_cbvSrvUavFreeRanges;
+            std::vector<std::pair<uint32_t, uint32_t>> m_samplerFreeRanges;
         };
     }
 }

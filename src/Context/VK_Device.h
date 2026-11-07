@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/7/27.
 //
 
@@ -40,6 +40,7 @@ namespace FCT {
         FencePool* newFencePool() override;
         RHI::RenderTargetView* newRhiRenderTargetView() override;
         RasterizationState* newRasterizationState() override;
+        DepthStencilState* newDepthStencilState() override;
     };
 }
 #endif //VK_DEVICE_H

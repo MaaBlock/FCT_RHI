@@ -1,6 +1,181 @@
 #include "./Assimp_ModelLoader.h"
 namespace FCT
 {
+    namespace
+    {
+        Mat4 convertAssimpMatrix(const aiMatrix4x4& from)
+        {
+            return Mat4(
+                from.a1, from.a2, from.a3, from.a4,
+                from.b1, from.b2, from.b3, from.b4,
+                from.c1, from.c2, from.c3, from.c4,
+                from.d1, from.d2, from.d3, from.d4
+            );
+        }
+
+        int registerOrGetBoneIndex(ModelSkeletonData& skeletonData, const aiBone* bone)
+        {
+            std::string boneName = bone->mName.C_Str();
+            auto it = skeletonData.boneNameToIndex.find(boneName);
+            if (it != skeletonData.boneNameToIndex.end()) {
+                return it->second;
+            }
+            int boneId = static_cast<int>(skeletonData.bones.size());
+            BoneInfo info;
+            info.name = boneName;
+            info.id = boneId;
+            info.offsetMatrix = convertAssimpMatrix(bone->mOffsetMatrix);
+            skeletonData.bones.push_back(info);
+            skeletonData.boneNameToIndex[boneName] = boneId;
+            return boneId;
+        }
+
+        void populateMeshBoneWeights(const aiMesh* aiMesh, ModelMesh* mesh, ModelSkeletonData& skeletonData)
+        {
+            if (!aiMesh || !aiMesh->HasBones()) {
+                return;
+            }
+            for (unsigned int b = 0; b < aiMesh->mNumBones; ++b) {
+                const aiBone* bone = aiMesh->mBones[b];
+                int boneId = registerOrGetBoneIndex(skeletonData, bone);
+                if (!mesh) {
+                    continue;
+                }
+                for (unsigned int w = 0; w < bone->mNumWeights; ++w) {
+                    uint32_t vertexId = bone->mWeights[w].mVertexId;
+                    float weight = bone->mWeights[w].mWeight;
+                    if (vertexId < mesh->vertices.size()) {
+                        mesh->vertices[vertexId].addBoneWeight(boneId, weight);
+                    }
+                }
+            }
+            if (mesh) {
+                for (auto& v : mesh->vertices) {
+                    v.normalizeBoneWeights();
+                }
+            }
+        }
+
+        SkeletonNode buildSkeletonNodeTree(const aiNode* aiNode, const ModelSkeletonData& skeletonData)
+        {
+            SkeletonNode node;
+            if (!aiNode) {
+                return node;
+            }
+            node.name = aiNode->mName.C_Str();
+            node.transformation = convertAssimpMatrix(aiNode->mTransformation);
+            auto it = skeletonData.boneNameToIndex.find(node.name);
+            if (it != skeletonData.boneNameToIndex.end()) {
+                node.boneIndex = it->second;
+            }
+            node.children.reserve(aiNode->mNumChildren);
+            for (unsigned int i = 0; i < aiNode->mNumChildren; ++i) {
+                node.children.push_back(buildSkeletonNodeTree(aiNode->mChildren[i], skeletonData));
+            }
+            return node;
+        }
+
+        bool findSkinnedMeshNodeGlobalTransform(
+            const aiNode* node,
+            const aiScene* scene,
+            const Mat4& parentTransform,
+            Mat4& outTransform)
+        {
+            if (!node || !scene) {
+                return false;
+            }
+            Mat4 currentTransform = parentTransform * convertAssimpMatrix(node->mTransformation);
+            for (unsigned int m = 0; m < node->mNumMeshes; ++m) {
+                unsigned int meshIdx = node->mMeshes[m];
+                if (meshIdx < scene->mNumMeshes && scene->mMeshes[meshIdx]->HasBones()) {
+                    outTransform = currentTransform;
+                    return true;
+                }
+            }
+            for (unsigned int c = 0; c < node->mNumChildren; ++c) {
+                if (findSkinnedMeshNodeGlobalTransform(node->mChildren[c], scene, currentTransform, outTransform)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        BoneAnimationChannel extractAnimationChannel(const aiNodeAnim* aiChannel)
+        {
+            BoneAnimationChannel channel;
+            channel.nodeName = aiChannel->mNodeName.C_Str();
+
+            channel.positions.reserve(aiChannel->mNumPositionKeys);
+            for (unsigned int k = 0; k < aiChannel->mNumPositionKeys; ++k) {
+                const auto& key = aiChannel->mPositionKeys[k];
+                channel.positions.push_back(KeyVec3{
+                    key.mTime,
+                    Vec3<>(key.mValue.x, key.mValue.y, key.mValue.z)
+                });
+            }
+
+            channel.rotations.reserve(aiChannel->mNumRotationKeys);
+            for (unsigned int k = 0; k < aiChannel->mNumRotationKeys; ++k) {
+                const auto& key = aiChannel->mRotationKeys[k];
+                channel.rotations.push_back(KeyQuat{
+                    key.mTime,
+                    Quat(key.mValue.x, key.mValue.y, key.mValue.z, key.mValue.w)
+                });
+            }
+
+            channel.scales.reserve(aiChannel->mNumScalingKeys);
+            for (unsigned int k = 0; k < aiChannel->mNumScalingKeys; ++k) {
+                const auto& key = aiChannel->mScalingKeys[k];
+                channel.scales.push_back(KeyVec3{
+                    key.mTime,
+                    Vec3<>(key.mValue.x, key.mValue.y, key.mValue.z)
+                });
+            }
+            return channel;
+        }
+
+        void extractSceneAnimations(const aiScene* aiScene, ModelSkeletonData& skeletonData)
+        {
+            if (!aiScene || !aiScene->HasAnimations()) {
+                return;
+            }
+            skeletonData.animations.reserve(aiScene->mNumAnimations);
+            for (unsigned int a = 0; a < aiScene->mNumAnimations; ++a) {
+                const aiAnimation* aiAnim = aiScene->mAnimations[a];
+                AnimationClip clip;
+                clip.name = aiAnim->mName.C_Str();
+                if (clip.name.empty()) {
+                    clip.name = "Animation_" + std::to_string(a);
+                }
+                clip.duration = aiAnim->mDuration;
+                clip.ticksPerSecond = aiAnim->mTicksPerSecond > 0.0 ? aiAnim->mTicksPerSecond : 25.0;
+                clip.channels.reserve(aiAnim->mNumChannels);
+                for (unsigned int c = 0; c < aiAnim->mNumChannels; ++c) {
+                    BoneAnimationChannel channel = extractAnimationChannel(aiAnim->mChannels[c]);
+                    clip.channelMap[channel.nodeName] = clip.channels.size();
+                    clip.channels.push_back(std::move(channel));
+                }
+                skeletonData.animations.push_back(std::move(clip));
+            }
+        }
+
+        void finalizeSkeletonHierarchy(const aiScene* aiScene, ModelSkeletonData& skeletonData)
+        {
+            if (!aiScene || !aiScene->mRootNode) {
+                return;
+            }
+            Mat4 meshGlobalTransform;
+            if (findSkinnedMeshNodeGlobalTransform(aiScene->mRootNode, aiScene, Mat4(), meshGlobalTransform)) {
+                skeletonData.globalInverseTransform = meshGlobalTransform.inverse();
+            } else {
+                skeletonData.globalInverseTransform = convertAssimpMatrix(aiScene->mRootNode->mTransformation).inverse();
+            }
+            skeletonData.rootNode = buildSkeletonNodeTree(aiScene->mRootNode, skeletonData);
+            extractSceneAnimations(aiScene, skeletonData);
+            skeletonData.prepareRuntimeCache();
+        }
+    }
+
     /**
      * @brief 将Assimp纹理类型转换为ModelInfo::TextureType
      */
@@ -30,6 +205,7 @@ namespace FCT
             default: return ModelInfo::TextureType::unknown;
         }
     }
+
     std::unique_ptr<ModelData> Assimp_ModelLoader::loadModel(const std::string& path)
     {
         ZoneScoped();
@@ -39,9 +215,14 @@ namespace FCT
             aiProcess_CalcTangentSpace |
             aiProcess_Triangulate |
             aiProcess_JoinIdenticalVertices |
-            aiProcess_SortByPType);
+            aiProcess_SortByPType |
+            aiProcess_LimitBoneWeights);
 
         auto ret = std::make_unique<ModelData>();
+        if (!aiScene) {
+            return ret;
+        }
+
         for (unsigned int i = 0; i < aiScene->mNumMeshes; i++)
         {
             const auto aiMesh = aiScene->mMeshes[i];
@@ -99,6 +280,8 @@ namespace FCT
                 }
             }
 
+            populateMeshBoneWeights(aiMesh, mesh, ret->skeletonData);
+
             if (aiMesh->HasFaces())
             {
                 mesh->indices.reserve(aiMesh->mNumFaces * 3);
@@ -114,8 +297,37 @@ namespace FCT
 
             ret->meshes.push_back(mesh);
         }
+
+        if (ret->skeletonData.hasSkeleton() || aiScene->HasAnimations()) {
+            finalizeSkeletonHierarchy(aiScene, ret->skeletonData);
+        }
+
         return ret;
     }
+
+    std::shared_ptr<ModelSkeletonData> Assimp_ModelLoader::loadSkeletonData(const std::string& path)
+    {
+        ZoneScoped();
+        ZoneText(path.c_str(), path.size());
+        Assimp::Importer importer;
+        const auto aiScene = importer.ReadFile(path,
+            aiProcess_Triangulate |
+            aiProcess_LimitBoneWeights);
+
+        if (!aiScene) {
+            return nullptr;
+        }
+
+        auto skeletonData = std::make_shared<ModelSkeletonData>();
+        for (unsigned int i = 0; i < aiScene->mNumMeshes; ++i) {
+            populateMeshBoneWeights(aiScene->mMeshes[i], nullptr, *skeletonData);
+        }
+        if (skeletonData->hasSkeleton() || aiScene->HasAnimations()) {
+            finalizeSkeletonHierarchy(aiScene, *skeletonData);
+        }
+        return skeletonData;
+    }
+
     ModelInfo::SceneInfo Assimp_ModelLoader::loadModelInfo(const std::string& path)
     {
         ZoneScoped();
@@ -127,12 +339,15 @@ namespace FCT
             aiProcess_CalcTangentSpace |
             aiProcess_Triangulate |
             aiProcess_JoinIdenticalVertices |
-            aiProcess_SortByPType);
+            aiProcess_SortByPType |
+            aiProcess_LimitBoneWeights);
 
         if (!aiScene) {
             return info;
         }
         info.name = aiScene->mName.C_Str();
+        std::unordered_set<std::string> uniqueBones;
+
         for (unsigned int i = 0; i < aiScene->mNumMeshes; i++)
         {
             const auto aiMesh = aiScene->mMeshes[i];
@@ -144,6 +359,12 @@ namespace FCT
             meshInfo.hasNormals = aiMesh->HasNormals();
             meshInfo.hasTangents = aiMesh->HasTangentsAndBitangents();
             meshInfo.hasBitangents = aiMesh->HasTangentsAndBitangents();
+            meshInfo.hasBones = aiMesh->HasBones();
+            meshInfo.boneCount = aiMesh->mNumBones;
+
+            for (unsigned int b = 0; b < aiMesh->mNumBones; ++b) {
+                uniqueBones.insert(aiMesh->mBones[b]->mName.C_Str());
+            }
 
             for (unsigned int texCoordSet = 0; texCoordSet < 8; texCoordSet++) {
                 meshInfo.hasTexCoords[texCoordSet] = aiMesh->HasTextureCoords(texCoordSet);
@@ -191,7 +412,20 @@ namespace FCT
 
             info.meshInfos.push_back(meshInfo);
         }
-          std::map<std::string, ModelInfo::TextureInfo> textureInfoMap;
+
+        info.boneCount = static_cast<uint32_t>(uniqueBones.size());
+        if (aiScene->HasAnimations()) {
+            info.animationNames.reserve(aiScene->mNumAnimations);
+            for (unsigned int a = 0; a < aiScene->mNumAnimations; ++a) {
+                std::string animName = aiScene->mAnimations[a]->mName.C_Str();
+                if (animName.empty()) {
+                    animName = "Animation_" + std::to_string(a);
+                }
+                info.animationNames.push_back(animName);
+            }
+        }
+
+        std::map<std::string, ModelInfo::TextureInfo> textureInfoMap;
         std::filesystem::path modelDir = std::filesystem::path(path).parent_path();
 
         for (unsigned int i = 0; i < aiScene->mNumMaterials; i++)
@@ -248,7 +482,7 @@ namespace FCT
             }
         }
 
-        for (const auto& [path, textureInfo] : textureInfoMap) {
+        for (const auto& [texPath, textureInfo] : textureInfoMap) {
             info.textureInfos.push_back(textureInfo);
         }
 

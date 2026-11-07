@@ -1,6 +1,19 @@
-﻿#include "Utils.h"
+#include "Utils.h"
+#include <atomic>
+#include <iostream>
+
 namespace FCT
 {
+    static std::atomic<bool> g_headlessDialogs{false};
+
+    void SetHeadlessDialogMode(bool headless) {
+        g_headlessDialogs.store(headless, std::memory_order_release);
+    }
+
+    bool IsHeadlessDialogMode() {
+        return g_headlessDialogs.load(std::memory_order_acquire);
+    }
+
 #ifdef _WIN32
     std::wstring stringToWString(const std::string& str) {
         if (str.empty()) return std::wstring();
@@ -13,6 +26,10 @@ namespace FCT
 #endif
 
     void ShowErrorDialog(const std::string& title, const std::string& message) {
+        if (g_headlessDialogs.load(std::memory_order_acquire)) {
+            std::cerr << "[ERROR] " << title << ": " << message << std::endl;
+            return;
+        }
 #ifdef _WIN32
         std::wstring wTitle = stringToWString(title);
         std::wstring wMessage = stringToWString(message);
@@ -23,6 +40,10 @@ namespace FCT
     }
 
     void ShowWarningDialog(const std::string& title, const std::string& message) {
+        if (g_headlessDialogs.load(std::memory_order_acquire)) {
+            std::cerr << "[WARNING] " << title << ": " << message << std::endl;
+            return;
+        }
 #ifdef _WIN32
         std::wstring wTitle = stringToWString(title);
         std::wstring wMessage = stringToWString(message);
@@ -33,6 +54,10 @@ namespace FCT
     }
 
     bool ShowConfirmDialog(const std::string& title, const std::string& message) {
+        if (g_headlessDialogs.load(std::memory_order_acquire)) {
+            std::cout << "[CONFIRM] (Headless Auto-Yes) " << title << ": " << message << std::endl;
+            return true;
+        }
 #ifdef _WIN32
         std::wstring wTitle = stringToWString(title);
         std::wstring wMessage = stringToWString(message);
@@ -47,6 +72,10 @@ namespace FCT
     }
 
     void ShowInfoDialog(const std::string& title, const std::string& message) {
+        if (g_headlessDialogs.load(std::memory_order_acquire)) {
+            std::cout << "[INFO] " << title << ": " << message << std::endl;
+            return;
+        }
 #ifdef _WIN32
         std::wstring wTitle = stringToWString(title);
         std::wstring wMessage = stringToWString(message);

@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/8/10.
 //
 
@@ -15,6 +15,7 @@ namespace FCT
         ImageUsages m_usage;
         TextureSize m_size;
         Image* m_allocatedImage = nullptr;
+        bool m_isExternal = false;
     public:
         RenderGraphBufferNode() : RenderGraphImageNode(), m_filled(false), m_format(Format::UNDEFINED),
                             m_samples(Samples::sample_undefined), m_usage(0),
@@ -27,6 +28,9 @@ namespace FCT
             * @param image 分配的图像指针
             * @endcond
             */
+        bool isExternal() const noexcept {
+            return m_isExternal;
+        }
         void setAllocatedImage(Image* image) {
             m_allocatedImage = image;
         }
@@ -37,7 +41,8 @@ namespace FCT
 
         RenderGraphBufferNode(const Texture& other) : RenderGraphImageNode(other.name), m_filled(true),
                                                     m_format(other.format), m_samples(other.samples),
-                                                    m_usage(ImageUsage::Texture), m_size(other.size)
+                                                    m_usage(other.isStorage ? (ImageUsage::Texture | ImageUsage::Storage) : ImageUsage(ImageUsage::Texture)), m_size(other.size),
+                                                    m_allocatedImage(other.externalImage), m_isExternal(other.isExternal)
         {
             if (other.size.type == TextureSize::Type::Absolute) {
                 setFixedSize(other.size.width, other.size.height);
@@ -46,7 +51,8 @@ namespace FCT
 
         RenderGraphBufferNode(const Target& other) : RenderGraphImageNode(other.name), m_filled(true),
                                                    m_format(other.format), m_samples(other.samples),
-                                                   m_usage(ImageUsage::RenderTarget), m_size(TextureSize())
+                                                   m_usage(ImageUsage::RenderTarget), m_size(TextureSize()),
+                                                   m_allocatedImage(other.externalImage), m_isExternal(other.isExternal)
         {
             if (other.hasFixedSize) {
                 setFixedSize(other.width, other.height);
@@ -55,7 +61,8 @@ namespace FCT
 
         RenderGraphBufferNode(const DepthStencil& other) : RenderGraphImageNode(other.name), m_filled(true),
                                                          m_format(other.format), m_samples(other.samples),
-                                                         m_usage(ImageUsage::DepthStencil), m_size(TextureSize())
+                                                         m_usage(ImageUsage::DepthStencil), m_size(TextureSize()),
+                                                         m_allocatedImage(other.externalImage), m_isExternal(other.isExternal)
         {
             if (other.hasFixedSize) {
                 setFixedSize(other.width, other.height);
@@ -65,7 +72,9 @@ namespace FCT
         {
             if (m_filled) {
                 checkCompatibilityAndMerge(other.name, other.format, other.samples,
-                                         ImageUsage::Texture, other.size);
+                                         other.isStorage ? ImageUsage::Storage : ImageUsage::Texture, other.size);
+                if (other.isStorage) { m_usage |= ImageUsage::Texture; }
+                if (other.isExternal && other.externalImage) { m_allocatedImage = other.externalImage; m_isExternal = true; }
                 return *this;
             }
             *this = RenderGraphBufferNode(other);
@@ -78,6 +87,9 @@ namespace FCT
                 checkCompatibilityAndMerge(other.name, other.format, other.samples,
                                          ImageUsage::RenderTarget, other.hasFixedSize,
                                          other.width, other.height);
+                if (other.isExternal && other.externalImage) { m_allocatedImage = other.externalImage; m_isExternal = true; }
+                if (false) checkCompatibilityAndMerge(other.name, other.format, other.samples, ImageUsage::RenderTarget, other.hasFixedSize,
+                                         other.width, other.height);
                 return *this;
             }
             *this = RenderGraphBufferNode(other);
@@ -89,6 +101,9 @@ namespace FCT
             if (m_filled) {
                 checkCompatibilityAndMerge(other.name, other.format, other.samples,
                                          ImageUsage::DepthStencil, other.hasFixedSize,
+                                         other.width, other.height);
+                if (other.isExternal && other.externalImage) { m_allocatedImage = other.externalImage; m_isExternal = true; }
+                if (false) checkCompatibilityAndMerge(other.name, other.format, other.samples, ImageUsage::DepthStencil, other.hasFixedSize,
                                          other.width, other.height);
                 return *this;
             }
@@ -166,7 +181,7 @@ namespace FCT
                     throw std::runtime_error("RenderGraph conflict: Incompatible sizes for resource '" + name + "'");
                 }
             }
-            if (textureSize && usage == ImageUsage::Texture) {
+            if (textureSize && (usage == ImageUsage::Texture || usage == ImageUsage::Storage)) {
                 if (textureSize->type == TextureSize::Type::Absolute) {
                     if (!setFixedSize(textureSize->width, textureSize->height)) {
                         throw std::runtime_error("RenderGraph conflict: Incompatible sizes for texture resource '" + name + "'");

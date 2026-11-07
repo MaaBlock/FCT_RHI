@@ -26,6 +26,14 @@ namespace FCT
             {
                 m_ctx->waitForGpuIdle();
             }
+            if (m_ctx && m_ctx->getFactory() && m_nativeHandle)
+            {
+                HWND hwnd = static_cast<HWND>(m_nativeHandle);
+                if (IsWindow(hwnd))
+                {
+                    m_ctx->getFactory()->MakeWindowAssociation(hwnd, DXGI_MWA_NO_WINDOW_CHANGES);
+                }
+            }
             cleanupOldResources();
             FCT_SAFE_RELEASE(m_fctImage);
             FCT_SAFE_RELEASE(m_depthStencilImage);

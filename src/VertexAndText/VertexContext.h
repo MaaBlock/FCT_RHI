@@ -1,4 +1,4 @@
-﻿#include "./VertexPath.h"
+#include "./VertexPath.h"
 namespace FCT
 {
     struct VertexScreenInfo {
@@ -29,19 +29,19 @@ namespace FCT
             m_paths.clear();
         }
 
-        VertexScreen& setX(Vec3 dir)
+        VertexScreen& setX(Vec3<> dir)
         {
             m_infos[m_infoIndex].XDir = Vec4(dir);
             return *this;
         }
 
-        VertexScreen& setY(Vec3 dir)
+        VertexScreen& setY(Vec3<> dir)
         {
             m_infos[m_infoIndex].YDir = Vec4(dir);
             return *this;
         }
 
-        VertexScreen& setOrigin(Vec3 origin)
+        VertexScreen& setOrigin(Vec3<> origin)
         {
             m_infos[m_infoIndex].origin = Vec4(origin);
             return *this;

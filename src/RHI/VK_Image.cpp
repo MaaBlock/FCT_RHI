@@ -56,6 +56,10 @@ namespace FCT {
             {
                 usageFlags |= vk::ImageUsageFlagBits::eDepthStencilAttachment;
             }
+            if (m_usage & ImageUsage::Storage)
+            {
+                usageFlags |= vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc;
+            }
             if (!(usageFlags & vk::ImageUsageFlagBits::eTransferDst)) {
                 usageFlags |= vk::ImageUsageFlagBits::eTransferDst;
             }

@@ -25,7 +25,7 @@
 #include "./ShaderCompiler.h"
 #include "./ShaderGenerator.h"
 #include "../ModelLoader/ModelLoader.h"
-#include "./OldRenderGraph.h"
+// Legacy OldRenderGraph removed
 #include "FencePool.h"
 #include "SemaphorePool.h"
 #include "./Device.h"
@@ -43,7 +43,6 @@ namespace FCT
 	class RasterizationState;
 
 	class BlendState;
-	class OldPass;
 	namespace RHI
 	{
 		class TextureView;
@@ -167,7 +166,15 @@ namespace FCT
 		 */
 		auto& submitTickers() { return m_flowControl->submitTickers(); }
 		void flush();
-		/** @} */
+        void _consumeLogicTask()
+        {
+            ZoneScopedN("ConsumeLogicTasks");
+            m_logicTask.consume_all([](LogicTaskData*& data) {
+                data->task();
+                FCT_DELETE(data);
+            });
+        }
+        /** @} */
 	protected:
 		struct LogicTaskData
 		{
@@ -193,6 +200,20 @@ namespace FCT
 		/** @} */
 	public:
 		void submitThread();
+		void stopSubmitThread()
+		{
+			if (!m_ctxRunning.load(std::memory_order_relaxed))
+			{
+				return;
+			}
+			m_ctxRunning.store(false, std::memory_order_release);
+			m_currentFlush.store(true, std::memory_order_release);
+			m_nextFrame.store(true, std::memory_order_release);
+			if (m_submitThread.joinable())
+			{
+				m_submitThread.join();
+			}
+		}
 		/** @name 着色器编译 (Shader Compilation)
   		  *  @{
   		  */
@@ -207,21 +228,24 @@ namespace FCT
 	      */
 		void _nextFrame();
 		void _currentFlush();
-		constexpr inline void _waitCurrentFlush()
+		inline void _waitCurrentFlush()
 		{
-			FCT_WAIT_FOR(m_currentFlush);
+		    ZoneScopedN("WaitSubmitFlush");
+			FCT_WAIT_FOR_WITH_TERM(m_currentFlush, !m_ctxRunning.load(std::memory_order_acquire));
 		}
-		constexpr inline void _waitForNextFrame()
+		inline void _waitForNextFrame()
 		{
-			FCT_WAIT_FOR_WITH_TERM(m_nextFrame,!m_ctxRunning);
+			FCT_WAIT_FOR_WITH_TERM(m_nextFrame, !m_ctxRunning.load(std::memory_order_acquire));
 		}
 		void advanceLogicFrame()
 		{
-			m_logicFrameIndex = (m_logicFrameIndex + 1) % m_maxFrameInFlight;
+			const uint32_t maxFrames = (m_maxFrameInFlight == 0) ? 1u : m_maxFrameInFlight;
+			m_logicFrameIndex = (m_logicFrameIndex + 1) % maxFrames;
 		}
 		void advanceSubmitFrame()
 		{
-			m_submitFrameIndex = (m_submitFrameIndex + 1) % m_maxFrameInFlight;
+			const uint32_t maxFrames = (m_maxFrameInFlight == 0) ? 1u : m_maxFrameInFlight;
+			m_submitFrameIndex = (m_submitFrameIndex + 1) % maxFrames;
 		}
 		/** @} */
 	protected:
@@ -242,10 +266,10 @@ namespace FCT
 		*/
 		SubmitTicker m_ticker;
 		std::vector<Window*> m_bindWindows;
-		bool m_nextFrame;
-		bool m_currentFlush;
+		std::atomic<bool> m_nextFrame{false};
+		std::atomic<bool> m_currentFlush{true};
 		std::thread m_submitThread;
-		bool m_ctxRunning;
+		std::atomic<bool> m_ctxRunning{true};
 	protected:
 		std::thread m_transferThread;
 		std::atomic<bool> m_transferRunning;
@@ -253,7 +277,7 @@ namespace FCT
 		virtual void transferThreadLoop() {}
 
 	protected:
-		uint32_t m_maxFrameInFlight;
+		uint32_t m_maxFrameInFlight{3};
 		//std::map<Window*, RHI::DescriptorPool*> m_descriptorPools;
 		RHI::DescriptorPool* m_descriptorPool;
 		size_t m_frameIndex = 0;//submit帧index 区别在于是 swapBuffer更改的，而m_submitFrameIndex和m_logicFrameIndex都是在同步时候更改的
@@ -295,6 +319,12 @@ namespace FCT
 		RHI::DescriptorPool* getDescriptorPool();
 		//todo: 考虑可能要变更为 [IRenderTarget*]<->[DescriptorPool*] map
 		uint32_t currentLogicFrameIndex() const { return m_logicFrameIndex; }
+		void deferRelease(RefCount* resource);
+		void flushDeferredReleases(uint32_t frameIdx);
+		void flushAllDeferredReleases();
+	protected:
+		std::mutex m_deferredReleaseMutex;
+		std::vector<std::vector<RefCount*>> m_deferredReleases;
 	protected:
 	public:
 	protected:

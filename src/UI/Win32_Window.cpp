@@ -9,6 +9,22 @@ namespace FCT
         constexpr int kMouseButtonRight = 1;
         constexpr int kActionRelease = 0;
         constexpr int kActionPress = 1;
+
+        void SafeDestroyWindowHandle(HWND hwnd)
+        {
+            if (!hwnd)
+            {
+                return;
+            }
+            if (IsWindow(hwnd))
+            {
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+                const BOOL success = DestroyWindow(hwnd);
+                assert((success != FALSE || GetLastError() == ERROR_INVALID_WINDOW_HANDLE) &&
+                       "SafeDestroyWindowHandle: DestroyWindow failed on UI thread");
+                (void)success;
+            }
+        }
     }
 
     std::wstring Win32_Window::utf8ToWide(const std::string& str)
@@ -86,11 +102,7 @@ namespace FCT
             m_running = false;
             m_common->sendUiTask([hwndToDestroy](void*)
             {
-                if (IsWindow(hwndToDestroy))
-                {
-                    SetWindowLongPtrW(hwndToDestroy, GWLP_USERDATA, 0);
-                    DestroyWindow(hwndToDestroy);
-                }
+                SafeDestroyWindowHandle(hwndToDestroy);
             });
         }
     }
@@ -173,8 +185,11 @@ namespace FCT
             }
 
             DragAcceptFiles(m_hwnd, TRUE);
-            ShowWindow(m_hwnd, SW_SHOW);
-            UpdateWindow(m_hwnd);
+            ShowWindow(m_hwnd, m_visible ? SW_SHOW : SW_HIDE);
+            if (m_visible)
+            {
+                UpdateWindow(m_hwnd);
+            }
             m_running = true;
         });
 
@@ -184,6 +199,27 @@ namespace FCT
             m_behavior = nullptr;
         }
         m_behavior = new Win32_WindowBehavior(this);
+    }
+
+    void Win32_Window::setVisible(bool visible)
+    {
+        m_visible = visible;
+        if (m_hwnd)
+        {
+            addRef();
+            m_common->postUiTask([this, visible](void*)
+            {
+                if (m_hwnd)
+                {
+                    ShowWindow(m_hwnd, visible ? SW_SHOW : SW_HIDE);
+                    if (visible)
+                    {
+                        UpdateWindow(m_hwnd);
+                    }
+                }
+                release();
+            }, nullptr, false);
+        }
     }
 
     uint32_t Win32_Window::addWndProcCallback(Win32WndProcCallback callback)

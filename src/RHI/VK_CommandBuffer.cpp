@@ -95,6 +95,10 @@ namespace FCT
             PipelineStages srcStage, PipelineStages dstStage, AccessFlags srcAccess, AccessFlags dstAccess,
             ImageAspects aspectMask)
         {
+            if (!image || !image->currentImage())
+            {
+                return;
+            }
             RHI::Image* fctImage = image->currentImage();
             auto vkImage = static_cast<VK_Image*>(fctImage);
             auto imageVk = vkImage->image();
@@ -108,11 +112,21 @@ namespace FCT
             barrier.newLayout = newLayoutVk;
             barrier.srcAccessMask = ToVkAccessFlags(srcAccess);
             barrier.dstAccessMask = ToVkAccessFlags(dstAccess);
-            barrier.subresourceRange.aspectMask = ToVkImageAspects(aspectMask);
+            vk::ImageAspectFlags vkAspect = ToVkImageAspects(aspectMask);
+            if (aspectMask & ImageAspect::depth)
+            {
+                Format fmt = image->format();
+                if (fmt == Format::D24_UNORM_S8_UINT ||
+                    fmt == Format::D32_SFLOAT_S8_UINT)
+                {
+                    vkAspect |= vk::ImageAspectFlagBits::eStencil;
+                }
+            }
+            barrier.subresourceRange.aspectMask = vkAspect;
             barrier.subresourceRange.baseMipLevel = 0;
             barrier.subresourceRange.levelCount = 1;
             barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount = 1;
+            barrier.subresourceRange.layerCount = image->arrayLayers() > 0 ? static_cast<uint32_t>(image->arrayLayers()) : 1u;
             vk::PipelineStageFlags srcStageMask = ToVkPipelineStageFlags(srcStage);
             vk::PipelineStageFlags dstStageMask = ToVkPipelineStageFlags(dstStage);
             std::vector<vk::ImageMemoryBarrier> barriers{barrier};

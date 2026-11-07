@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/7/27.
 //
 
@@ -14,6 +14,7 @@ namespace FCT {
     class MutilBufferImage;
     class DescriptorPool;
     class RasterizationState;
+    class DepthStencilState;
     class BlendState;
     class Sampler;
     class PassResource;
@@ -85,6 +86,7 @@ namespace FCT {
         virtual RHI::DepthStencilView* newRhiDepthStencilView() = 0;
         virtual RHI::TextureView* newRhiTextureView() = 0;
         virtual RasterizationState* newRasterizationState() = 0;
+        virtual DepthStencilState* newDepthStencilState() = 0;
         virtual BlendState* newBlendState() = 0;
         virtual Sampler* newSampler() = 0;
         virtual PassResource* newPassResource() = 0;
@@ -139,6 +141,8 @@ namespace FCT {
                 return newRhiTextureView();
             else if constexpr (std::is_same_v<T, RasterizationState>)
                 return newRasterizationState();
+            else if constexpr (std::is_same_v<T, DepthStencilState>)
+                return newDepthStencilState();
             else if constexpr (std::is_same_v<T, BlendState>)
                 return newBlendState();
             else if constexpr (std::is_same_v<T, Sampler>)

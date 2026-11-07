@@ -63,6 +63,14 @@ namespace FCT
             {
                 m_commandBuffer.drawIndexed(static_cast<uint32_t>(indexCount),static_cast<uint32_t>(instanceCount), static_cast<uint32_t>(indexBegin), static_cast<int32_t>(firstVertex), static_cast<uint32_t>(instanceBegin));
             }
+            void drawIndexedIndirect(void* indirectBuffer, size_t byteOffset, uint32_t drawCount, uint32_t stride) override
+            {
+                if (!indirectBuffer || drawCount == 0) {
+                    return;
+                }
+                vk::Buffer vkBuf(reinterpret_cast<VkBuffer>(indirectBuffer));
+                m_commandBuffer.drawIndexedIndirect(vkBuf, static_cast<vk::DeviceSize>(byteOffset), drawCount, stride);
+            }
             void barrier(FCT::Image* image, ImageLayout oldLayout, ImageLayout newLayout, PipelineStages srcStage, PipelineStages dstStage, AccessFlags srcAccess, AccessFlags dstAccess, ImageAspects aspectMask) override;
         protected:
             VK_CommandPool* m_pool;

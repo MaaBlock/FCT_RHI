@@ -50,6 +50,14 @@ namespace FCT
             vk::FramebufferCreateInfo m_framebufferInfo;
             //vk::Framebuffer m_framebuffer;
             std::vector<vk::ClearValue> m_clearValues;
+            struct CachedFramebuffer
+            {
+                std::vector<vk::ImageView> views;
+                uint32_t width = 0;
+                uint32_t height = 0;
+                vk::Framebuffer framebuffer = nullptr;
+            };
+            std::vector<CachedFramebuffer> m_framebufferCache;
             std::unordered_map<RHI::CommandBuffer*,vk::Framebuffer> m_framebuffers;
             std::map<uint32_t, AttachmentSlot> m_depthAttachments;
             uint32_t m_currentPassIndex;

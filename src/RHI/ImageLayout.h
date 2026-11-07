@@ -118,8 +118,9 @@ namespace FCT {
         switch (e)
         {
             case ImageLayout::undefined:
-            case ImageLayout::general:
                 return D3D12_RESOURCE_STATE_COMMON;
+            case ImageLayout::general:
+                return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             case ImageLayout::colorAttachmentOptimal:
             case ImageLayout::attachmentOptimal:
                 return D3D12_RESOURCE_STATE_RENDER_TARGET;

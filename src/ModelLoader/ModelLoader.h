@@ -38,55 +38,62 @@ namespace FCT
 
 
         struct MeshInfo
-    {
-        std::string name;
-        uint32_t vertexCount;
-        uint32_t indexCount;
-        uint32_t triangleCount;
-        bool isIndexed;
-
-        bool hasPositions;
-        bool hasNormals;
-        bool hasTangents;
-        bool hasBitangents;
-
-        std::array<bool, 8> hasTexCoords;
-        std::array<bool, 8> hasVertexColors;
-
-        Vec3 boundingBoxMin;
-        Vec3 boundingBoxMax;
-        Vec3 boundingBoxCenter;
-
-        MeshInfo() : vertexCount(0), indexCount(0), triangleCount(0),
-                     isIndexed(false), hasPositions(false), hasNormals(false),
-                     hasTangents(false), hasBitangents(false),
-                     boundingBoxMin(0.0f), boundingBoxMax(0.0f), boundingBoxCenter(0.0f)
         {
-            hasTexCoords.fill(false);
-            hasVertexColors.fill(false);
-        }
+            std::string name;
+            uint32_t vertexCount;
+            uint32_t indexCount;
+            uint32_t triangleCount;
+            bool isIndexed;
 
-    private:
-        friend class boost::serialization::access;
-        template<class Archive>
-        void serialize(Archive & ar, const unsigned int version)
-        {
-            ar & name;
-            ar & vertexCount;
-            ar & indexCount;
-            ar & triangleCount;
-            ar & isIndexed;
-            ar & hasPositions;
-            ar & hasNormals;
-            ar & hasTangents;
-            ar & hasBitangents;
-            ar & hasTexCoords;
-            ar & hasVertexColors;
-            ar & boundingBoxMin;
-            ar & boundingBoxMax;
-            ar & boundingBoxCenter;
-        }
-    };
+            bool hasPositions;
+            bool hasNormals;
+            bool hasTangents;
+            bool hasBitangents;
+            bool hasBones;
+            uint32_t boneCount;
+
+            std::array<bool, 8> hasTexCoords;
+            std::array<bool, 8> hasVertexColors;
+
+            Vec3<> boundingBoxMin;
+            Vec3<> boundingBoxMax;
+            Vec3<> boundingBoxCenter;
+
+            MeshInfo() : vertexCount(0), indexCount(0), triangleCount(0),
+                         isIndexed(false), hasPositions(false), hasNormals(false),
+                         hasTangents(false), hasBitangents(false),
+                         hasBones(false), boneCount(0),
+                         boundingBoxMin(0.0f), boundingBoxMax(0.0f), boundingBoxCenter(0.0f)
+            {
+                hasTexCoords.fill(false);
+                hasVertexColors.fill(false);
+            }
+
+        private:
+            friend class boost::serialization::access;
+            template<class Archive>
+            void serialize(Archive & ar, const unsigned int version)
+            {
+                ar & name;
+                ar & vertexCount;
+                ar & indexCount;
+                ar & triangleCount;
+                ar & isIndexed;
+                ar & hasPositions;
+                ar & hasNormals;
+                ar & hasTangents;
+                ar & hasBitangents;
+                ar & hasTexCoords;
+                ar & hasVertexColors;
+                ar & boundingBoxMin;
+                ar & boundingBoxMax;
+                ar & boundingBoxCenter;
+                if (version >= 2) {
+                    ar & hasBones;
+                    ar & boneCount;
+                }
+            }
+        };
 
         struct MaterialInfo
         {
@@ -124,6 +131,8 @@ namespace FCT
             std::vector<MeshInfo> meshInfos;
             std::vector<MaterialInfo> materialInfos;
             std::vector<TextureInfo> textureInfos;
+            std::vector<std::string> animationNames;
+            uint32_t boneCount = 0;
 
         private:
             friend class boost::serialization::access;
@@ -134,15 +143,19 @@ namespace FCT
                 ar & meshInfos;
                 ar & materialInfos;
                 ar & textureInfos;
+                if (version >= 2) {
+                    ar & animationNames;
+                    ar & boneCount;
+                }
             }
         };
     }
 }
 
-BOOST_CLASS_VERSION(FCT::ModelInfo::MeshInfo, 1);
+BOOST_CLASS_VERSION(FCT::ModelInfo::MeshInfo, 2);
 BOOST_CLASS_VERSION(FCT::ModelInfo::MaterialInfo, 1);
 BOOST_CLASS_VERSION(FCT::ModelInfo::TextureInfo, 3);
-BOOST_CLASS_VERSION(FCT::ModelInfo::SceneInfo, 1);
+BOOST_CLASS_VERSION(FCT::ModelInfo::SceneInfo, 2);
 
 namespace boost {
 namespace serialization {
@@ -159,6 +172,187 @@ namespace serialization {
 }
 namespace FCT
 {
+    struct BoneInfo
+    {
+        std::string name;
+        int id = -1;
+        Mat4 offsetMatrix;
+    };
+
+    struct SkeletonTRS
+    {
+        Vec3<> translation{0.0f, 0.0f, 0.0f};
+        Quat rotation{0.0f, 0.0f, 0.0f, 1.0f};
+        Vec3<> scale{1.0f, 1.0f, 1.0f};
+
+        Mat4 toMatrix() const;
+        static SkeletonTRS fromMatrix(const Mat4& mat);
+        static SkeletonTRS blend(const SkeletonTRS& a, const SkeletonTRS& b, float weight);
+    };
+
+    struct SkeletonNode
+    {
+        std::string name;
+        Mat4 transformation;
+        int boneIndex = -1;
+        std::vector<SkeletonNode> children;
+    };
+
+    struct FlattenedSkeletonNode
+    {
+        std::string name;
+        Mat4 bindTransform;
+        SkeletonTRS bindTRS;
+        int32_t parentIndex = -1;
+        int32_t boneIndex = -1;
+    };
+
+    struct KeyVec3
+    {
+        double time = 0.0;
+        Vec3<> value;
+    };
+
+    struct KeyQuat
+    {
+        double time = 0.0;
+        Quat value;
+    };
+
+    struct BoneAnimationChannel
+    {
+        std::string nodeName;
+        std::vector<KeyVec3> positions;
+        std::vector<KeyQuat> rotations;
+        std::vector<KeyVec3> scales;
+
+        Vec3<> interpolatePosition(double animationTime) const;
+        Quat interpolateRotation(double animationTime) const;
+        Vec3<> interpolateScale(double animationTime) const;
+        SkeletonTRS evaluateLocalTRS(double animationTime, const SkeletonTRS& fallbackBind) const;
+        Mat4 evaluateLocalTransform(double animationTime) const;
+    };
+
+    struct AnimationClip
+    {
+        std::string name;
+        double duration = 0.0;
+        double ticksPerSecond = 25.0;
+        std::vector<BoneAnimationChannel> channels;
+        std::unordered_map<std::string, size_t> channelMap;
+        std::vector<int32_t> flatNodeToChannel;
+
+        const BoneAnimationChannel* findChannel(const std::string& nodeName) const
+        {
+            auto it = channelMap.find(nodeName);
+            if (it != channelMap.end() && it->second < channels.size()) {
+                return &channels[it->second];
+            }
+            return nullptr;
+        }
+
+        const BoneAnimationChannel* findChannelByFlatNode(size_t flatNodeIndex) const noexcept
+        {
+            if (flatNodeIndex < flatNodeToChannel.size()) {
+                const int32_t chIdx = flatNodeToChannel[flatNodeIndex];
+                if (chIdx >= 0 && static_cast<size_t>(chIdx) < channels.size()) {
+                    return &channels[static_cast<size_t>(chIdx)];
+                }
+            }
+            return nullptr;
+        }
+
+        float getDurationInSeconds() const
+        {
+            double tps = ticksPerSecond > 0.0 ? ticksPerSecond : 25.0;
+            return static_cast<float>(duration / tps);
+        }
+
+        double secondsToTicks(float timeInSeconds, bool loop) const;
+    };
+
+    struct SkeletalBlendParams
+    {
+        std::string primaryClipName;
+        float primaryTimeSec = 0.0f;
+        bool primaryLoop = true;
+
+        std::string targetClipName;
+        float targetTimeSec = 0.0f;
+        bool targetLoop = true;
+        float blendWeight = 0.0f;
+
+        std::string layerClipName;
+        float layerTimeSec = 0.0f;
+        bool layerLoop = true;
+        float layerWeight = 0.0f;
+        std::string layerMaskRootBone;
+
+        bool lockRootPosition = false;
+    };
+
+    struct ModelSkeletonData
+    {
+        std::vector<BoneInfo> bones;
+        std::unordered_map<std::string, int> boneNameToIndex;
+        SkeletonNode rootNode;
+        Mat4 globalInverseTransform;
+        std::vector<AnimationClip> animations;
+
+        std::vector<FlattenedSkeletonNode> flatNodes;
+        std::unordered_map<std::string, int32_t> flatNodeNameToIndex;
+        int32_t primaryMotionNodeIndex = -1;
+        bool runtimeCachePrepared = false;
+
+        bool hasSkeleton() const noexcept
+        {
+            return !bones.empty();
+        }
+
+        const AnimationClip* findAnimation(const std::string& clipName) const
+        {
+            if (animations.empty()) {
+                return nullptr;
+            }
+            if (clipName.empty()) {
+                return &animations[0];
+            }
+            for (const auto& clip : animations) {
+                if (clip.name == clipName) {
+                    return &clip;
+                }
+            }
+            return &animations[0];
+        }
+
+        const AnimationClip* findAnimationExact(const std::string& clipName) const
+        {
+            if (clipName.empty()) {
+                return nullptr;
+            }
+            for (const auto& clip : animations) {
+                if (clip.name == clipName) {
+                    return &clip;
+                }
+            }
+            return nullptr;
+        }
+
+        void prepareRuntimeCache();
+        int32_t findFlatNodeIndex(const std::string& nodeName) const;
+        std::vector<std::string> getAnimationNames() const;
+        std::vector<std::string> getNodeNames() const;
+
+        void evaluateBindPose(std::vector<Mat4>& outBoneMatrices, size_t maxBones = 256) const;
+        void evaluateAnimation(const std::string& clipName, float timeInSeconds, bool loop,
+                               std::vector<Mat4>& outBoneMatrices, size_t maxBones = 256) const;
+        void evaluateBlendedPose(
+            const SkeletalBlendParams& params,
+            std::vector<Mat4>& outBoneMatrices,
+            std::vector<Mat4>* outGlobalNodeMatrices = nullptr,
+            size_t maxBones = 256) const;
+    };
+
     struct ModelVertex
     {
         ModelVertex() :  position(0.0f, 0.0f, 0.0f),
@@ -173,13 +367,55 @@ namespace FCT
             for (int i = 0; i < 8; i++) {
                 colors[i] = Vec4(1.0f, 1.0f, 1.0f, 1.0f);
             }
+
+            for (int i = 0; i < 4; i++) {
+                boneIds[i] = 0;
+                boneWeights[i] = 0.0f;
+            }
         }
-        Vec3 position;
-        Vec3 normal;
+        Vec3<> position;
+        Vec3<> normal;
         Vec2 texCoords[8];
-        Vec3 tangent;
-        Vec3 bitangent;
+        Vec3<> tangent;
+        Vec3<> bitangent;
         Vec4 colors[8];
+        int32_t boneIds[4];
+        float boneWeights[4];
+
+        void addBoneWeight(int32_t boneId, float weight)
+        {
+            if (weight <= 0.0f) {
+                return;
+            }
+            for (int i = 0; i < 4; ++i) {
+                if (boneWeights[i] == 0.0f) {
+                    boneIds[i] = boneId;
+                    boneWeights[i] = weight;
+                    return;
+                }
+            }
+            int minIdx = 0;
+            for (int i = 1; i < 4; ++i) {
+                if (boneWeights[i] < boneWeights[minIdx]) {
+                    minIdx = i;
+                }
+            }
+            if (weight > boneWeights[minIdx]) {
+                boneIds[minIdx] = boneId;
+                boneWeights[minIdx] = weight;
+            }
+        }
+
+        void normalizeBoneWeights()
+        {
+            float sum = boneWeights[0] + boneWeights[1] + boneWeights[2] + boneWeights[3];
+            if (sum > 1e-6f) {
+                float invSum = 1.0f / sum;
+                for (int i = 0; i < 4; ++i) {
+                    boneWeights[i] *= invSum;
+                }
+            }
+        }
     };
     struct ModelMaterial
     {
@@ -202,6 +438,8 @@ namespace FCT
         std::vector<ModelMaterial*> materials;
         std::vector<ModelMesh*> meshes;
         std::vector<ModelObject*> objects;
+        ModelSkeletonData skeletonData;
+
         ModelMesh* findMesh(const std::string &name)
         {
             auto it = std::find_if(meshes.begin(), meshes.end(), [&name](const ModelMesh* mesh)
@@ -321,6 +559,46 @@ namespace FCT
             }
             return;
         }
+
+        if (modelAttr == ModelVertexAttribute::BoneIds) {
+            switch (format) {
+            case Format::R32G32B32A32_SINT:
+                vertex.setAttribute(elementIndex, IVec4(
+                    modelVertex.boneIds[0], modelVertex.boneIds[1],
+                    modelVertex.boneIds[2], modelVertex.boneIds[3]));
+                break;
+            case Format::R32G32B32A32_UINT:
+                vertex.setAttribute(elementIndex, UVec4(
+                    static_cast<uint32_t>(std::max(0, modelVertex.boneIds[0])),
+                    static_cast<uint32_t>(std::max(0, modelVertex.boneIds[1])),
+                    static_cast<uint32_t>(std::max(0, modelVertex.boneIds[2])),
+                    static_cast<uint32_t>(std::max(0, modelVertex.boneIds[3]))));
+                break;
+            case Format::R32G32B32A32_SFLOAT:
+                vertex.setAttribute(elementIndex, Vec4(
+                    static_cast<float>(modelVertex.boneIds[0]),
+                    static_cast<float>(modelVertex.boneIds[1]),
+                    static_cast<float>(modelVertex.boneIds[2]),
+                    static_cast<float>(modelVertex.boneIds[3])));
+                break;
+            default:
+                break;
+            }
+            return;
+        }
+
+        if (modelAttr == ModelVertexAttribute::BoneWeights) {
+            switch (format) {
+            case Format::R32G32B32A32_SFLOAT:
+                vertex.setAttribute(elementIndex, Vec4(
+                    modelVertex.boneWeights[0], modelVertex.boneWeights[1],
+                    modelVertex.boneWeights[2], modelVertex.boneWeights[3]));
+                break;
+            default:
+                break;
+            }
+            return;
+        }
     }
 
     // 转换时，用一个map存ModelMaterial
@@ -330,6 +608,7 @@ namespace FCT
     public:
         virtual std::unique_ptr<ModelData> loadModel(const std::string &path) = 0;
         virtual ModelInfo::SceneInfo loadModelInfo(const std::string &path) = 0;
+        virtual std::shared_ptr<ModelSkeletonData> loadSkeletonData(const std::string& path);
         /**
          * @cond CHINESE
          * @brief 解析模型依赖的纹理位置

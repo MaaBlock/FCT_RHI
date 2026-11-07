@@ -30,6 +30,10 @@ namespace FCT
             {
                 flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
             }
+            if (m_usage & ImageUsage::Storage)
+            {
+                flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            }
             return flags;
         }
 

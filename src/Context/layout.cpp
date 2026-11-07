@@ -133,9 +133,40 @@ namespace FCT
         clearPassResourceCache();
     }
 
+    Layout::~Layout()
+    {
+        if (m_ctx && !m_passName.empty())
+        {
+            if (m_passPipeSubIds.first != 0)
+            {
+                m_ctx->pipeHub().passPipe.unsubscribe(m_passName, m_passPipeSubIds.first);
+                m_passPipeSubIds.first = 0;
+            }
+            if (m_passPipeSubIds.second != 0)
+            {
+                m_ctx->pipeHub().passPipe.unsubscribe(m_passName, m_passPipeSubIds.second);
+                m_passPipeSubIds.second = 0;
+            }
+        }
+    }
+
     void Layout::attachPass(std::string passName)
     {
-        m_ctx->pipeHub()
+        if (m_ctx && !m_passName.empty())
+        {
+            if (m_passPipeSubIds.first != 0)
+            {
+                m_ctx->pipeHub().passPipe.unsubscribe(m_passName, m_passPipeSubIds.first);
+                m_passPipeSubIds.first = 0;
+            }
+            if (m_passPipeSubIds.second != 0)
+            {
+                m_ctx->pipeHub().passPipe.unsubscribe(m_passName, m_passPipeSubIds.second);
+                m_passPipeSubIds.second = 0;
+            }
+        }
+        m_passName = passName;
+        m_passPipeSubIds = m_ctx->pipeHub()
              .passPipe.
              subscribe<PassInfo>(
                  passName,
@@ -255,6 +286,21 @@ namespace FCT
         m_pipelineState.pixelShader = shader;
     }
 
+    void Layout::bindDepthStencilState(FCT::DepthStencilState* state)
+    {
+        m_pipelineState.depthStencilState = state;
+    }
+
+    void Layout::bindBlendState(FCT::BlendState* state)
+    {
+        m_pipelineState.blendState = state;
+    }
+
+    void Layout::bindRasterizationState(FCT::RasterizationState* state)
+    {
+        m_pipelineState.rasterizationState = state;
+    }
+
 
     void Layout::end()
     {
@@ -314,6 +360,9 @@ namespace FCT
         for (const auto& tex : boundTextures) {
             boost::hash_combine(hash, tex.first);
             boost::hash_combine(hash, tex.second);
+            if (tex.second) {
+                boost::hash_combine(hash, tex.second->textureViewHash());
+            }
         }
 
         for (const auto& samp : boundSamplers) {

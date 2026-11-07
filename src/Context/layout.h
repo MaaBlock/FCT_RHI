@@ -1,4 +1,4 @@
-﻿#ifndef LAYOUT_H
+#ifndef LAYOUT_H
 #define LAYOUT_H
 #include "ShaderStage.h"
 #include "Context.h"
@@ -71,6 +71,7 @@ namespace FCT {
         */
         template<typename... Args>
         Layout(FCT::Context* ctx,Args... args);
+        ~Layout();
         /**
          * @cond CHINESE
          * @brief 重新设置 FCT 上下文。
@@ -236,6 +237,9 @@ namespace FCT {
          * @endcond
          */
         void bindPixelShader(const ShaderRef& ref);
+        void bindDepthStencilState(FCT::DepthStencilState* state);
+        void bindBlendState(FCT::BlendState* state);
+        void bindRasterizationState(FCT::RasterizationState* state);
 
         /**
          * @cond CHINESE
@@ -247,6 +251,9 @@ namespace FCT {
          */
         template<typename T>
         void drawMesh(RHI::CommandBuffer* cmdBuffer,T* mesh);
+
+        template<typename T>
+        void drawMeshIndirect(RHI::CommandBuffer* cmdBuffer, T* mesh, void* indirectBuffer, size_t byteOffset, uint32_t drawCount = 1);
 
         /**
          * @cond CHINESE
@@ -399,7 +406,8 @@ namespace FCT {
         // --- 当前 Pass/Pipeline 状态 ---
         bool m_injectPassResource = true;
         std::string m_passName;
-        FCT::RHI::Pass* m_pass;
+        FCT::RHI::Pass* m_pass = nullptr;
+        std::pair<SubscribeId, SubscribeId> m_passPipeSubIds{0, 0};
         PassResourceState m_passResourceState;
         TraditionPipelineState m_pipelineState;
 

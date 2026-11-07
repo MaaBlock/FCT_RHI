@@ -51,7 +51,19 @@ namespace FCT
 
     VK_Context::~VK_Context()
     {
+        stopSubmitThread();
+        m_transferRunning.store(false, std::memory_order_release);
+        if (m_transferThread.joinable()) {
+            m_transferThread.join();
+        }
+        FCT_SAFE_DELETE(m_renderGraph);
+        flushAllDeferredReleases();
+        m_emptyConstBufferCache.clear();
+        m_emptySampler.reset();
+        FCT_SAFE_DELETE(m_cmdGraph);
+        FCT_SAFE_DELETE(m_descriptorPool);
         if (m_device) {
+            m_device.waitIdle();
             if (m_syncStagingBuffer) {
                 m_device.destroyBuffer(m_syncStagingBuffer);
                 m_syncStagingBuffer = nullptr;
@@ -60,10 +72,16 @@ namespace FCT
                 m_device.freeMemory(m_syncStagingMemory);
                 m_syncStagingMemory = nullptr;
             }
-            m_device.freeCommandBuffers(m_commandPool, m_commandBuffers);
-            m_device.destroyCommandPool(m_commandPool);
+            if (!m_commandBuffers.empty()) {
+                m_device.freeCommandBuffers(m_commandPool, m_commandBuffers);
+            }
+            if (m_commandPool) {
+                m_device.destroyCommandPool(m_commandPool);
+                m_commandPool = nullptr;
+            }
             if (m_transferCommandPool) {
                 m_device.destroyCommandPool(m_transferCommandPool);
+                m_transferCommandPool = nullptr;
             }
             m_device.destroy();
         }
@@ -699,11 +717,30 @@ namespace FCT
              }
         }
 
+        for (auto& upload : m_inFlightUploads) {
+            if (upload.fence) {
+                (void)m_device.waitForFences(1, &upload.fence, VK_TRUE, UINT64_MAX);
+                m_device.destroyFence(upload.fence);
+            }
+            if (upload.cmdBuffer && m_asyncTransferCmdPool) {
+                m_device.freeCommandBuffers(m_asyncTransferCmdPool, 1, &upload.cmdBuffer);
+            }
+        }
+        m_inFlightUploads.clear();
+
+        TransferTask* pendingTask = nullptr;
+        while (m_asyncTransferTaskQueue.pop(pendingTask)) {
+            delete pendingTask;
+        }
+
         if (m_stageMappedPtr) m_device.unmapMemory(m_stageMemory);
         if (m_stageBuffer) m_device.destroyBuffer(m_stageBuffer);
         if (m_stageMemory) m_device.freeMemory(m_stageMemory);
 
-        m_device.destroyCommandPool(m_asyncTransferCmdPool);
+        if (m_asyncTransferCmdPool) {
+            m_device.destroyCommandPool(m_asyncTransferCmdPool);
+            m_asyncTransferCmdPool = nullptr;
+        }
         
         Context::transferThreadLoop();
     }
@@ -925,6 +962,8 @@ namespace FCT
         vk::PhysicalDeviceFeatures supportedFeatures = m_phyDevice.getFeatures();
         vk::PhysicalDeviceFeatures deviceFeatures;
         deviceFeatures.setSamplerAnisotropy(supportedFeatures.samplerAnisotropy);
+        deviceFeatures.setMultiDrawIndirect(supportedFeatures.multiDrawIndirect);
+        deviceFeatures.setDrawIndirectFirstInstance(supportedFeatures.drawIndirectFirstInstance);
 
         vk::DeviceCreateInfo deviceCreateInfo;
         deviceCreateInfo.setQueueCreateInfos(queueCreateInfos)

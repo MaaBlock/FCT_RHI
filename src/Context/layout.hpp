@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/8/17.
 //
 
@@ -121,6 +121,20 @@ namespace FCT
         resource->bind(cmdBuffer,pipeline);
         mesh->bind(cmdBuffer);
         mesh->draw(cmdBuffer);
+    }
+
+    template <typename T>
+    void Layout::drawMeshIndirect(RHI::CommandBuffer* cmdBuffer, T* mesh, void* indirectBuffer, size_t byteOffset, uint32_t drawCount)
+    {
+        auto resource = getCurrentPassResource();
+        auto pipeline = getCurrentPipeline();
+
+        pipeline->bind(cmdBuffer);
+        resource->bind(cmdBuffer, pipeline);
+        mesh->bind(cmdBuffer);
+        mesh->drawIndirect(cmdBuffer, indirectBuffer, byteOffset, drawCount);
+    }
+    inline void _fct_layout_indirect_anchor() {
     }
 
     template <typename T>

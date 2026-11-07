@@ -1,4 +1,4 @@
-﻿#ifndef FCT_RHI_PASS_H
+#ifndef FCT_RHI_PASS_H
 #define FCT_RHI_PASS_H
 #include "../Base/Flags.h"
 #include "../MutilThreadBase/RefCount.h"
@@ -53,6 +53,8 @@ namespace FCT
                 m_clearValue.depth = depth;
                 m_clearValue.stencil = stencil;
             }
+            void setClearDepth(float depth) { m_clearValue.depth = depth; }
+            float clearDepth() const { return m_clearValue.depth; }
             void enableClear(PassClearValue clearValue)
             {
                 m_clearValue = clearValue;

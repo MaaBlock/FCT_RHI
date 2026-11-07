@@ -71,6 +71,7 @@ namespace FCT {
         }
     };
 
+    template<typename Real = float>
     struct Vec3
     {
 #ifdef FCT_USE_PHYSX
@@ -78,22 +79,27 @@ namespace FCT {
             return physx::PxExtendedVec3(x, y, z);
         }
         operator physx::PxVec3() const {
-            return physx::PxVec3(x, y, z);
+            return physx::PxVec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
         }
         Vec3(const physx::PxVec3& other) {
-			x = other.x;
-		    y = other.y;
-		    z = other.z;
-		}
+            x = static_cast<Real>(other.x);
+            y = static_cast<Real>(other.y);
+            z = static_cast<Real>(other.z);
+        }
 #endif
-        float x, y, z;
-        Vec3(float x = 0.0f, float y = 0.0f, float z = 0.0f) : x(x), y(y), z(z) {}
+        Real x, y, z;
+        constexpr Vec3(Real x = static_cast<Real>(0), Real y = static_cast<Real>(0), Real z = static_cast<Real>(0))
+            : x(x), y(y), z(z) {}
 
-        Vec3(const Vec3 &other)
+        constexpr Vec3(const Vec3 &other)
+            : x(other.x), y(other.y), z(other.z)
         {
-            x = other.x;
-            y = other.y;
-            z = other.z;
+        }
+
+        template<typename OtherReal>
+        constexpr Vec3(const Vec3<OtherReal> &other)
+            : x(static_cast<Real>(other.x)), y(static_cast<Real>(other.y)), z(static_cast<Real>(other.z))
+        {
         }
 
         Vec3 operator-() const
@@ -118,7 +124,7 @@ namespace FCT {
             return (x < other.x) && (y < other.y) && (z < other.z);
         }
 
-        float lengthSquared() const
+        Real lengthSquared() const
         {
             return x * x + y * y + z * z;
         }
@@ -138,18 +144,18 @@ namespace FCT {
         {
             return Vec3(x - rhs.x, y - rhs.y, z - rhs.z);
         }
-        Vec3 operator*(float scalar) const
+        Vec3 operator*(Real scalar) const
         {
             return Vec3(x * scalar, y * scalar, z * scalar);
         }
-        float length() const
+        Real length() const
         {
             return std::sqrt(x * x + y * y + z * z);
         }
         Vec3 normalize() const
         {
-            float length = std::sqrt(x * x + y * y + z * z);
-            return Vec3(x / length, y / length, z / length);
+            Real len = std::sqrt(x * x + y * y + z * z);
+            return Vec3(x / len, y / len, z / len);
         }
         Vec3 cross(const Vec3 &other) const
         {
@@ -158,10 +164,10 @@ namespace FCT {
                 z * other.x - x * other.z,
                 x * other.y - y * other.x);
         }
-        Vec3 rotate(const Vec3 &axis, float angle) const
+        Vec3 rotate(const Vec3 &axis, Real angle) const
         {
-            float cosTheta = std::cos(angle);
-            float sinTheta = std::sin(angle);
+            Real cosTheta = std::cos(angle);
+            Real sinTheta = std::sin(angle);
             Vec3 normalizedAxis = axis.normalize();
 
             return Vec3(
@@ -177,7 +183,7 @@ namespace FCT {
                     ((1 - cosTheta) * normalizedAxis.y * normalizedAxis.z + sinTheta * normalizedAxis.x) * y +
                     (cosTheta + (1 - cosTheta) * normalizedAxis.z * normalizedAxis.z) * z);
         }
-        float dot(const Vec3& rhs) const {
+        Real dot(const Vec3& rhs) const {
             return x * rhs.x + y * rhs.y + z * rhs.z;
         }
         friend class boost::serialization::access;
@@ -189,21 +195,28 @@ namespace FCT {
             ar & z;
         }
     };
-    inline Vec3 normalize(const Vec3 &v)
+
+    using Vec3f = Vec3<float>;
+    using Vec3d = Vec3<double>;
+
+    template<typename Real>
+    inline Vec3<Real> normalize(const Vec3<Real> &v)
     {
-        float length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-        return Vec3(v.x / length, v.y / length, v.z / length);
+        Real length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+        return Vec3<Real>(v.x / length, v.y / length, v.z / length);
     }
 
-    inline Vec3 cross(const Vec3 &a, const Vec3 &b)
+    template<typename Real>
+    inline Vec3<Real> cross(const Vec3<Real> &a, const Vec3<Real> &b)
     {
-        return Vec3(
+        return Vec3<Real>(
             a.y * b.z - a.z * b.y,
             a.z * b.x - a.x * b.z,
             a.x * b.y - a.y * b.x);
     }
 
-    inline float dot(const Vec3 &a, const Vec3 &b)
+    template<typename Real>
+    inline Real dot(const Vec3<Real> &a, const Vec3<Real> &b)
     {
         return a.x * b.x + a.y * b.y + a.z * b.z;
     }
@@ -212,8 +225,9 @@ namespace FCT {
         float x, y, z, w;
         Vec4(float x = 0.0f, float y = 0.0f, float z = 0.0f, float w = 0.0f)
             : x(x), y(y), z(z), w(w) {}
-        Vec4(Vec3 vec, float w = 0.0f)
-        : x(vec.x), y(vec.y), z(vec.z), w(w) {}
+        template<typename Real>
+        Vec4(const Vec3<Real>& vec, float w = 0.0f)
+        : x(static_cast<float>(vec.x)), y(static_cast<float>(vec.y)), z(static_cast<float>(vec.z)), w(w) {}
         Vec4(Vec2 v, float z = 0.0f, float w = 0.0f)
             : x(v.x), y(v.y), z(z), w(w) {}
         Vec4 operator-(const Vec4 &rhs) const
@@ -233,9 +247,9 @@ namespace FCT {
             }
             return Vec4(0.0f, 0.0f, 0.0f, 0.0f);
         }
-        Vec3 xyz() const
+        Vec3<> xyz() const
         {
-            return Vec3(x, y, z);
+            return Vec3<>(x, y, z);
         }
         friend class boost::serialization::access;
         template<class Archive>
@@ -254,5 +268,12 @@ namespace FCT {
         Vector4(T x = 0, T y = 0, T z = 0, T w = 0) : x(x), y(y), z(z), w(w) {}
     };
 
+    using IVec4 = Vector4<int32_t>;
+    using UVec4 = Vector4<uint32_t>;
+
+    BOOST_DESCRIBE_STRUCT(Vec2, (), (x, y))
+    BOOST_DESCRIBE_STRUCT(Vec3f, (), (x, y, z))
+    BOOST_DESCRIBE_STRUCT(Vec3d, (), (x, y, z))
+    BOOST_DESCRIBE_STRUCT(Vec4, (), (x, y, z, w))
 }
 #endif //VEC_H

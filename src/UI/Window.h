@@ -1,4 +1,4 @@
-﻿#ifndef FCT_WINDOW_H
+#ifndef FCT_WINDOW_H
 #define FCT_WINDOW_H
 #include "../MutilThreadBase/RefCount.h"
 #include "../Context/DataTypes.h"
@@ -85,6 +85,8 @@ namespace FCT {
 		void create(WindowCreateFlags flags = WindowCreateFlag::defaultConfig);
         void bind(Context* ctx) override;
         virtual bool isRunning() const = 0;
+        bool isVisible() const { return m_visible; }
+        virtual void setVisible(bool visible) { m_visible = visible; }
 		virtual void swapBuffers() = 0;
 		virtual int getWidth() = 0;
 		virtual int getHeight() = 0;
@@ -198,6 +200,7 @@ namespace FCT {
 		Format m_depthBufferFormat;
         Context* m_ctx;
 		EventDispatcher<EventSystemConfig::IdentifierTriggerOnly> m_delayModuleCreate;
+		bool m_visible{true};
 	private:
 		void addSingleComponent(const WindowModule::Swapchain& component);
         void addSingleComponent(const WindowModule::AutoViewport& component);

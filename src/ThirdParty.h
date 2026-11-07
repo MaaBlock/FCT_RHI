@@ -87,6 +87,8 @@
 #include <boost/serialization/version.hpp>
 #include <boost/serialization/set.hpp>
 #include <boost/container_hash/hash.hpp>
+#include <boost/describe.hpp>
+#include <boost/mp11.hpp>
 
 #include <thread>
 #include <map>
@@ -114,7 +116,6 @@
 #include <vulkan/vulkan_win32.h>
 #endif
 #ifdef FCT_ANDROID
-extern int main();
 #include <vulkan/vulkan_android.h>
 #define VK_USE_PLATFORM_ANDROID_KHR
 #endif

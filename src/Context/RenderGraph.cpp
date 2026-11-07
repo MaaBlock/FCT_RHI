@@ -183,6 +183,7 @@ namespace FCT
         edge->fromImage = textureName;
         edge->toPass = passName;
         edge->stage = getEarliestStage(texture.stages);
+        edge->isStorage = texture.isStorage;
 
         TextureEdge* edgePtr = edge.get();
 
@@ -388,6 +389,15 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
             }
 
             if (referenceNodes.empty()) {
+                for (auto* textureEdge : pass.getTextureIncomingEdges()) {
+                    auto imageNodeIt = m_imageNodes.find(textureEdge->fromImage);
+                    if (imageNodeIt != m_imageNodes.end() && imageNodeIt->second->isSizeDetermined()) {
+                        referenceNodes.push_back(imageNodeIt->second.get());
+                        break;
+                    }
+                }
+            }
+            if (referenceNodes.empty()) {
                 continue;
             }
 
@@ -419,6 +429,10 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
     {
         for (const auto& [passName, passNode] : m_passNodes) {
             m_passesUnions.unite(passName, passName);
+            continue;
+        }
+        if (true) return;
+        for (const auto& [passName, passNode] : m_passNodes) {
         }
 
         for (const auto& [passName, passNode] : m_passNodes) {
@@ -523,7 +537,11 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
                 uint32_t width, height;
                 bool hasFixedSize = bufferNode->getComputedSize(width, height);
 
-                if (hasFixedSize) {
+                if (bufferNode->isExternal() && bufferNode->getImage()) {
+                    Image* externalImage = resourceManager->registerExternalTarget(name, bufferNode->getImage());
+                    bufferNode->setAllocatedImage(externalImage);
+                    m_allocatedImages[name] = externalImage;
+                } else if (hasFixedSize) {
                     TargetDesc targetDesc;
                     targetDesc.width = static_cast<int>(width);
                     targetDesc.height = static_cast<int>(height);
@@ -549,6 +567,9 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
             const SizeNode* root = bufferNode->getRoot();
 
             if (root != bufferNode) {
+                if (bufferNode->isExternal() && bufferNode->getImage()) {
+                    continue;
+                }
                 ImageDesc imageDesc;
                 imageDesc.format = bufferNode->getFormat();
                 imageDesc.samples = bufferNode->getSamples();
@@ -634,6 +655,59 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
         if (dependencies.find(groupLeader) == dependencies.end()) {
             dependencies[groupLeader] = std::set<std::string>();
         }
+        for (const std::string& passName : groupMembers) {
+            for (const auto& [imgName, imgNode] : m_imageNodes) {
+                const auto& tEdges = imgNode->getTargetIncomingEdges();
+                for (size_t i = 1; i < tEdges.size(); ++i) {
+                    if (tEdges[i]->fromPass == passName) {
+                        std::string prevPass = tEdges[i - 1]->fromPass;
+                        auto allGroups = m_passesUnions.getGroups();
+                        for (const auto& [otherLeader, otherMembers] : allGroups) {
+                            if (otherLeader != groupLeader &&
+                                std::find(otherMembers.begin(), otherMembers.end(), prevPass) != otherMembers.end()) {
+                                dependencies[groupLeader].insert(otherLeader);
+                                break;
+                            }
+                        }
+                    }
+                }
+                const auto& dEdges = imgNode->getDepthStencilIncomingEdges();
+                for (size_t i = 1; i < dEdges.size(); ++i) {
+                    if (dEdges[i]->fromPass == passName) {
+                        std::string prevPass = dEdges[i - 1]->fromPass;
+                        auto allGroups = m_passesUnions.getGroups();
+                        for (const auto& [otherLeader, otherMembers] : allGroups) {
+                            if (otherLeader != groupLeader &&
+                                std::find(otherMembers.begin(), otherMembers.end(), prevPass) != otherMembers.end()) {
+                                dependencies[groupLeader].insert(otherLeader);
+                                break;
+                            }
+                        }
+                    }
+                }
+                const auto& texEdges = imgNode->getTextureOutgoingEdges();
+                for (size_t i = 0; i < texEdges.size(); ++i) {
+                    if (texEdges[i]->toPass == passName && !texEdges[i]->isStorage) {
+                        for (size_t j = 0; j < texEdges.size(); ++j) {
+                            if (texEdges[j]->isStorage && texEdges[j]->toPass != passName) {
+                                std::string storageWriter = texEdges[j]->toPass;
+                                auto allGroups = m_passesUnions.getGroups();
+                                for (const auto& [otherLeader, otherMembers] : allGroups) {
+                                    if (otherLeader != groupLeader &&
+                                        std::find(otherMembers.begin(), otherMembers.end(), storageWriter) != otherMembers.end()) {
+                                        dependencies[groupLeader].insert(otherLeader);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (false) {
+            dependencies[groupLeader] = std::set<std::string>();
+        }
 
         for (const std::string& passName : groupMembers) {
             auto passNodeIt = m_passNodes.find(passName);
@@ -714,6 +788,30 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
             }
         }
 
+        for (const auto& [imgName, imgNode] : m_imageNodes) {
+            const auto& tEdges = imgNode->getTargetIncomingEdges();
+            for (size_t i = 1; i < tEdges.size(); ++i) {
+                if (tEdges[i]->fromPass != tEdges[i - 1]->fromPass) {
+                    dependencies[tEdges[i]->fromPass].insert(tEdges[i - 1]->fromPass);
+                }
+            }
+            const auto& dEdges = imgNode->getDepthStencilIncomingEdges();
+            for (size_t i = 1; i < dEdges.size(); ++i) {
+                if (dEdges[i]->fromPass != dEdges[i - 1]->fromPass) {
+                    dependencies[dEdges[i]->fromPass].insert(dEdges[i - 1]->fromPass);
+                }
+            }
+            const auto& texEdges = imgNode->getTextureOutgoingEdges();
+            for (const auto* readerEdge : texEdges) {
+                if (!readerEdge->isStorage) {
+                    for (const auto* writerEdge : texEdges) {
+                        if (writerEdge->isStorage && writerEdge->toPass != readerEdge->toPass) {
+                            dependencies[readerEdge->toPass].insert(writerEdge->toPass);
+                        }
+                    }
+                }
+            }
+        }
         return dependencies;
     }
 
@@ -1018,6 +1116,65 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
 
         std::vector<BarrierInfo> barriers;
         std::set<Image*> processedImages;
+        for (const std::string& passName : groupMembers) {
+            auto passIt = m_passNodes.find(passName);
+            if (passIt == m_passNodes.end()) continue;
+            const auto& passNode = passIt->second;
+
+            for (const auto* targetEdge : passNode.getTargetOutgoingEdges()) {
+                auto imageNodeIt = m_imageNodes.find(targetEdge->toImage);
+                if (imageNodeIt == m_imageNodes.end()) continue;
+                if (dynamic_cast<const RenderGraphWindowTargetNode*>(imageNodeIt->second.get())) continue;
+
+                Image* image = imageNodeIt->second->getImage();
+                if (!image || processedImages.count(image)) continue;
+
+                auto stateIt = imageStates.find(image);
+                if (stateIt == imageStates.end()) continue;
+
+                const ImageState& currentState = stateIt->second;
+                if (currentState.currentLayout != ImageLayout::colorAttachmentOptimal) {
+                    BarrierInfo barrier;
+                    barrier.image = image;
+                    barrier.oldLayout = currentState.currentLayout;
+                    barrier.newLayout = ImageLayout::colorAttachmentOptimal;
+                    barrier.srcStage = currentState.lastStage;
+                    barrier.dstStage = PipelineStage::colorAttachmentOutput;
+                    barrier.srcAccess = currentState.lastAccess;
+                    barrier.dstAccess = AccessFlag::colorAttachmentWrite;
+                    barrier.aspect = ImageAspect::color;
+                    barriers.push_back(barrier);
+                    processedImages.insert(image);
+                }
+            }
+
+            for (const auto* depthEdge : passNode.getDepthStencilOutgoingEdges()) {
+                auto imageNodeIt = m_imageNodes.find(depthEdge->toImage);
+                if (imageNodeIt == m_imageNodes.end()) continue;
+                if (dynamic_cast<const RenderGraphWindowDepthStencilNode*>(imageNodeIt->second.get())) continue;
+
+                Image* image = imageNodeIt->second->getImage();
+                if (!image || processedImages.count(image)) continue;
+
+                auto stateIt = imageStates.find(image);
+                if (stateIt == imageStates.end()) continue;
+
+                const ImageState& currentState = stateIt->second;
+                if (currentState.currentLayout != ImageLayout::depthStencilAttachmentOptimal) {
+                    BarrierInfo barrier;
+                    barrier.image = image;
+                    barrier.oldLayout = currentState.currentLayout;
+                    barrier.newLayout = ImageLayout::depthStencilAttachmentOptimal;
+                    barrier.srcStage = currentState.lastStage;
+                    barrier.dstStage = PipelineStage::earlyFragmentTests | PipelineStage::lateFragmentTests;
+                    barrier.srcAccess = currentState.lastAccess;
+                    barrier.dstAccess = AccessFlag::depthStencilAttachmentWrite;
+                    barrier.aspect = ImageAspect::depth;
+                    barriers.push_back(barrier);
+                    processedImages.insert(image);
+                }
+            }
+        }
 
         for (const std::string& passName : groupMembers) {
             auto passIt = m_passNodes.find(passName);
@@ -1038,8 +1195,13 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
                 const ImageState& currentState = stateIt->second;
 
                 PipelineStage requiredStage = convertShaderStageToPipelineStage(textureEdge->stage);
-                AccessFlag requiredAccess = AccessFlag::shaderRead;
-                ImageLayout requiredLayout = ImageLayout::shaderReadOnlyOptimal;
+                AccessFlags requiredAccess = textureEdge->isStorage
+                    ? (AccessFlag::shaderRead | AccessFlag::shaderWrite)
+                    : AccessFlags(AccessFlag::shaderRead);
+                ImageLayout requiredLayout = textureEdge->isStorage
+                    ? ImageLayout::general
+                    : ImageLayout::shaderReadOnlyOptimal;
+                (void)0;
 
                 bool needsBarrier = false;
 
@@ -1049,7 +1211,7 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
 
                 if (!currentState.lastWriterGroup.empty() &&
                     currentState.lastWriterGroup != groupLeader &&
-                    (currentState.lastAccess & (AccessFlag::colorAttachmentWrite | AccessFlag::depthStencilAttachmentWrite))) {
+                    (currentState.lastAccess & (AccessFlag::colorAttachmentWrite | AccessFlag::depthStencilAttachmentWrite | AccessFlag::shaderWrite))) {
                     needsBarrier = true;
                     }
 
@@ -1112,7 +1274,7 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
                 if (!image) continue;
 
                 ImageState& state = imageStates[image];
-                state.currentLayout = ImageLayout::depthAttachmentOptimal;
+                state.currentLayout = ImageLayout::depthStencilAttachmentOptimal;
                 state.lastStage = PipelineStage::lateFragmentTests;
                 state.lastAccess = AccessFlag::depthStencilAttachmentWrite;
                 state.lastWriterGroup = groupLeader;
@@ -1126,7 +1288,12 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
                 if (!image) continue;
 
                 ImageState& state = imageStates[image];
-                if (state.currentLayout != ImageLayout::shaderReadOnlyOptimal) {
+                if (textureEdge->isStorage) {
+                    state.currentLayout = ImageLayout::general;
+                    state.lastStage = convertShaderStageToPipelineStage(textureEdge->stage);
+                    state.lastAccess = AccessFlag::shaderWrite;
+                    state.lastWriterGroup = groupLeader;
+                } else if (state.currentLayout != ImageLayout::shaderReadOnlyOptimal) {
                     state.currentLayout = ImageLayout::shaderReadOnlyOptimal;
                     state.lastStage = convertShaderStageToPipelineStage(textureEdge->stage);
                     state.lastAccess = AccessFlag::shaderRead;
@@ -1158,6 +1325,12 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
         }
         m_allocatedPasses.clear();
         m_topologicalSortPasses.clear();
+        for (auto& [name, passGroup] : m_allocatedPassGroups)
+        {
+            passGroup->release();
+        }
+        m_allocatedPassGroups.clear();
+        if (false)
         for (auto& [name, passGroup] : m_allocatedPassGroups)
         {
             passGroup->release();
@@ -1200,7 +1373,24 @@ void RenderGraph::cullPasses()
             bool hasTargetOutput = !passNode.getTargetOutgoingEdges().empty();
             bool hasDepthStencilOutput = !passNode.getDepthStencilOutgoingEdges().empty();
             
-            if (!hasTargetOutput && !hasDepthStencilOutput) {
+            bool hasStorageOutput = false;
+            for (const auto* texEdge : passNode.getTextureIncomingEdges()) {
+                if (texEdge->isStorage) {
+                    hasStorageOutput = true;
+                    break;
+                }
+            }
+            bool isComputeOrInterop = false;
+            auto descIt = m_passDescs.find(passName);
+            if (descIt != m_passDescs.end()) {
+                if (descIt->second.type == PassType::Compute ||
+                    descIt->second.type == PassType::ExternalInterop ||
+                    descIt->second.computeDispatcher != nullptr) {
+                    isComputeOrInterop = true;
+                }
+            }
+
+            if (!hasTargetOutput && !hasDepthStencilOutput && !hasStorageOutput && !isComputeOrInterop) {
                 shouldCull = true;
             } else {
                 for (const auto* targetEdge : passNode.getTargetOutgoingEdges()) {

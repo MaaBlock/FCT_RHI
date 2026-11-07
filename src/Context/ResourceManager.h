@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/7/28.
 //
 
@@ -127,6 +127,7 @@ namespace FCT
          * @endcond
          */
         Image* allocateTarget(std::string name,TargetDesc desc);
+        Image* registerExternalTarget(std::string name, Image* externalImg);
     };
 
 }

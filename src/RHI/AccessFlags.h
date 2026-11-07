@@ -13,6 +13,11 @@ namespace FCT {
         colorAttachmentWrite = 1 << 2,
         depthStencilAttachmentWrite = 1 << 3,
         shaderRead = 1 << 4,
+        shaderWrite = 1 << 5,
+        colorAttachmentRead = 1 << 6,
+        depthStencilAttachmentRead = 1 << 7,
+        transferRead = 1 << 8,
+        transferWrite = 1 << 9,
     };
     FCT_DECLARE_FLAGS(AccessFlag);
 #ifdef FCT_USE_VULKAN
@@ -29,6 +34,16 @@ namespace FCT {
                 return vk::AccessFlagBits::eDepthStencilAttachmentWrite;
             case AccessFlag::shaderRead:
                 return vk::AccessFlagBits::eShaderRead;
+            case AccessFlag::shaderWrite:
+                return vk::AccessFlagBits::eShaderWrite;
+            case AccessFlag::colorAttachmentRead:
+                return vk::AccessFlagBits::eColorAttachmentRead;
+            case AccessFlag::depthStencilAttachmentRead:
+                return vk::AccessFlagBits::eDepthStencilAttachmentRead;
+            case AccessFlag::transferRead:
+                return vk::AccessFlagBits::eTransferRead;
+            case AccessFlag::transferWrite:
+                return vk::AccessFlagBits::eTransferWrite;
             default:
                 return static_cast<vk::AccessFlagBits>(0);
         }

@@ -1,4 +1,4 @@
-﻿namespace FCT
+namespace FCT
 {
 
     /**
@@ -37,5 +37,20 @@
      * @endcond
      */
     void ShowInfoDialog(const std::string& title, const std::string& message);
+
+    /**
+     * @cond CHINESE
+     * @brief 设置无头模式对话框重定向（启用后所有弹窗输出至控制台，不阻塞GUI）
+     * @param headless 是否启用无头模式
+     * @endcond
+     */
+    void SetHeadlessDialogMode(bool headless);
+
+    /**
+     * @cond CHINESE
+     * @brief 获取当前是否处于无头对话框模式
+     * @endcond
+     */
+    bool IsHeadlessDialogMode();
 
 }

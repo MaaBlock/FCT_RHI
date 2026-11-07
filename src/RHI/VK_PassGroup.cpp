@@ -21,10 +21,25 @@ namespace FCT
             {
                 m_ctx->device().destroyRenderPass(m_renderPass);
             }
-            for (auto& it : m_framebuffers)
+            m_framebuffers.clear();
+            for (auto& cached : m_framebufferCache)
             {
-                if (it.second)
-                    m_ctx->device().destroyFramebuffer(it.second);
+                if (cached.framebuffer)
+                {
+                    m_ctx->device().destroyFramebuffer(cached.framebuffer);
+                }
+            }
+            if (false)
+            {
+                (void)0;
+                    (void)0;
+            for (auto& cached : m_framebufferCache)
+            {
+                if (cached.framebuffer)
+                {
+                    m_ctx->device().destroyFramebuffer(cached.framebuffer);
+                }
+            }
             }
         }
 
@@ -150,7 +165,8 @@ namespace FCT
         {
             ZoneScoped();
             collectImageViews();
-            if (m_framebuffers[cmdBuf])
+            // Framebuffer 缓存复用，避免每帧销毁重建
+            if (false && m_framebuffers[cmdBuf])
             {
                 m_ctx->device().destroyFramebuffer(m_framebuffers[cmdBuf]);
                 m_framebuffers[cmdBuf] = nullptr;
@@ -178,7 +194,21 @@ namespace FCT
             m_framebufferInfo.renderPass = m_renderPass;
 
             try {
-                m_framebuffers[cmdBuf] = m_ctx->device().createFramebuffer(m_framebufferInfo);
+                vk::Framebuffer cachedFb = nullptr;
+                for (const auto& entry : m_framebufferCache)
+                {
+                    if (entry.width == width && entry.height == height && entry.views == m_framebufferViews)
+                    {
+                        cachedFb = entry.framebuffer;
+                        break;
+                    }
+                }
+                if (!cachedFb)
+                {
+                    cachedFb = m_ctx->device().createFramebuffer(m_framebufferInfo);
+                    m_framebufferCache.push_back(CachedFramebuffer{m_framebufferViews, width, height, cachedFb});
+                }
+                m_framebuffers[cmdBuf] = cachedFb;
             } catch (const std::exception& e) {
                 ferr << "Failed to create framebuffer: " << e.what() << std::endl;
                 throw;
@@ -224,7 +254,7 @@ namespace FCT
         void VK_PassGroup::nextPass(CommandBuffer* cmdBuf)
         {
             cmdBuf->nextPass();
-            m_currentPassIndex = 1;
+            m_currentPassIndex++;
             m_passes[m_currentPassIndex]->executeClear(cmdBuf);
         }
 
@@ -344,7 +374,7 @@ namespace FCT
                         if (image->getType() == RenderTargetType::WindowTarget && !m_nextPassGroup.size()) {
                             desc.finalLayout = vk::ImageLayout::ePresentSrcKHR;
                         } else {
-                            desc.finalLayout = vk::ImageLayout::eGeneral;
+                            desc.finalLayout = vk::ImageLayout::eColorAttachmentOptimal;
                         }
 
                         desc.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
@@ -383,7 +413,7 @@ namespace FCT
                         if (desc.format == vk::Format::eD24UnormS8Uint ||
                             desc.format == vk::Format::eD32SfloatS8Uint ||
                             desc.format == vk::Format::eD16UnormS8Uint ||
-                            desc.format == vk::Format::eD32Sfloat
+                            false
                             )
                         {
                             desc.stencilLoadOp = vk::AttachmentLoadOp::eLoad;

@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/8/10.
 //
 
@@ -17,6 +17,8 @@ namespace FCT
 
         Window* wnd;
         bool isWindow;
+        Image* externalImage = nullptr;
+        bool isExternal = false;
 
         Target() noexcept
             : name(""), format(Format::UNDEFINED), samples(Samples::sample_undefined),
@@ -53,6 +55,20 @@ namespace FCT
             width = w;
             height = h;
             hasFixedSize = true;
+            processArgs(std::forward<Rest>(rest)...);
+        }
+
+        template<typename... Rest>
+        void processArgs(Image* img, Rest&&... rest) noexcept {
+            externalImage = img;
+            isExternal = (img != nullptr);
+            if (img) {
+                width = static_cast<uint32_t>(img->width());
+                height = static_cast<uint32_t>(img->height());
+                hasFixedSize = (width > 0 && height > 0);
+                format = img->format();
+                samples = img->samples();
+            }
             processArgs(std::forward<Rest>(rest)...);
         }
 

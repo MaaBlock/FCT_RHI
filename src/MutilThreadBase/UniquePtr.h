@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <type_traits>
@@ -25,20 +24,22 @@ namespace FCT {
     public:
         template<typename U> friend class UniquePtr;
 
-        // 编译时检查，确保 T 没有继承自 RefCount
-        static_assert(!std::is_base_of<FCT::RefCount, T>::value && !FCT::IsNewRefCountBase<T>::value,
-            "UniquePtr cannot manage types derived from FCT::RefCount. Use a reference-counting pointer instead.");
-
         /**
          * @brief 默认构造函数，创建一个空的 UniquePtr。
          */
         UniquePtr() noexcept : m_ptr(nullptr) {}
 
+        UniquePtr(std::nullptr_t) noexcept : m_ptr(nullptr) {}
+
         /**
          * @brief 从裸指针构造 UniquePtr，获得其所有权。
          * @param ptr 指向要管理对象的指针。
          */
-        explicit UniquePtr(T* ptr) noexcept : m_ptr(ptr) {}
+        explicit UniquePtr(T* ptr) noexcept : m_ptr(ptr) {
+            // 编译时检查，确保 T 没有继承自 RefCount（置于完整类型实例化点以支持 PIMPL 前向声明）
+            static_assert(!std::is_base_of<FCT::RefCount, T>::value && !FCT::IsNewRefCountBase<T>::value,
+                "UniquePtr cannot manage types derived from FCT::RefCount. Use a reference-counting pointer instead.");
+        }
 
         /**
          * @brief 移动构造函数，从另一个 UniquePtr 转移所有权。
@@ -73,6 +74,11 @@ namespace FCT {
             return *this;
         }
 
+        UniquePtr& operator=(std::nullptr_t) noexcept {
+            reset();
+            return *this;
+        }
+
         // 禁止拷贝构造和拷贝赋值
         UniquePtr(const UniquePtr&) = delete;
         UniquePtr& operator=(const UniquePtr&) = delete;
@@ -99,6 +105,8 @@ namespace FCT {
          * @param ptr 指向新对象的指针，默认为 nullptr。
          */
         void reset(T* ptr = nullptr) noexcept {
+            static_assert(!std::is_base_of<FCT::RefCount, T>::value && !FCT::IsNewRefCountBase<T>::value,
+                "UniquePtr cannot manage types derived from FCT::RefCount. Use a reference-counting pointer instead.");
             if (m_ptr) {
                 FCT_DELETE(m_ptr);
             }
@@ -136,6 +144,9 @@ namespace FCT {
         explicit operator bool() const noexcept {
             return m_ptr != nullptr;
         }
+
+        bool operator==(std::nullptr_t) const noexcept { return m_ptr == nullptr; }
+        bool operator!=(std::nullptr_t) const noexcept { return m_ptr != nullptr; }
 
     private:
         T* m_ptr;

@@ -1,4 +1,3 @@
-
 #include "./Vec.h"
 #pragma once
 
@@ -197,11 +196,11 @@ namespace FCT
 				0, 0, 0, 1
 			);
 		}
-		static Mat4 LookAt(const Vec3& eye, const Vec3& center, const Vec3& up)
+		static Mat4 LookAt(const Vec3<>& eye, const Vec3<>& center, const Vec3<>& up)
 		{
-			Vec3 f = (center - eye).normalize(); //z
-			Vec3 s = f.cross(up).normalize(); //x
-			Vec3 u = s.cross(f);
+			Vec3<> f = (center - eye).normalize(); //z
+			Vec3<> s = f.cross(up).normalize(); //x
+			Vec3<> u = s.cross(f);
 
 			Mat4 result = {
 				s.x,  s.y,  s.z,  -s.dot(eye),
@@ -240,6 +239,26 @@ namespace FCT
 				 0,         0,			zFar / (zFar - zNear),     -zFar * zNear / (zFar - zNear),
 				 0,         0,			1 ,                         0
 			 );
+		}
+		static Mat4 PerspectiveReverseZ(float fovx, float aspect, float zNear, float zFar)
+		{
+			float angle = fovx * 3.14159265f / 180.0f;
+			float h = tanf(angle / 2.0f);
+			if (zFar <= zNear)
+			{
+				return Mat4(
+					1.0f / h, 0.0f,       0.0f,  0.0f,
+					0.0f,     aspect / h, 0.0f,  0.0f,
+					0.0f,     0.0f,       0.0f,  zNear,
+					0.0f,     0.0f,       1.0f,  0.0f
+				);
+			}
+			return Mat4(
+				1.0f / h, 0.0f,       0.0f,                        0.0f,
+				0.0f,     aspect / h, 0.0f,                        0.0f,
+				0.0f,     0.0f,      -zNear / (zFar - zNear),      (zFar * zNear) / (zFar - zNear),
+				0.0f,     0.0f,       1.0f,                        0.0f
+			);
 		}
 		static Mat4 RotateX(float degrees)
 		{
@@ -368,5 +387,76 @@ namespace FCT
 	class Mat3 : public Mat4
 	{
 
+	};
+
+	struct Quat
+	{
+		float x, y, z, w;
+
+		constexpr Quat(float x = 0.0f, float y = 0.0f, float z = 0.0f, float w = 1.0f)
+			: x(x), y(y), z(z), w(w) {}
+
+		Quat normalize() const
+		{
+			float len = std::sqrt(x * x + y * y + z * z + w * w);
+			if (len > 1e-6f)
+			{
+				float inv = 1.0f / len;
+				return Quat(x * inv, y * inv, z * inv, w * inv);
+			}
+			return Quat(0.0f, 0.0f, 0.0f, 1.0f);
+		}
+
+		static Quat Slerp(const Quat& a, const Quat& b, float t)
+		{
+			Quat q1 = a.normalize();
+			Quat q2 = b.normalize();
+			float cosom = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
+			if (cosom < 0.0f)
+			{
+				cosom = -cosom;
+				q2.x = -q2.x;
+				q2.y = -q2.y;
+				q2.z = -q2.z;
+				q2.w = -q2.w;
+			}
+			float scale0 = 1.0f - t;
+			float scale1 = t;
+			if ((1.0f - cosom) > 1e-4f)
+			{
+				float clamped = cosom < -1.0f ? -1.0f : (cosom > 1.0f ? 1.0f : cosom);
+				float omega = std::acos(clamped);
+				float sinom = std::sin(omega);
+				scale0 = std::sin((1.0f - t) * omega) / sinom;
+				scale1 = std::sin(t * omega) / sinom;
+			}
+			return Quat(
+				scale0 * q1.x + scale1 * q2.x,
+				scale0 * q1.y + scale1 * q2.y,
+				scale0 * q1.z + scale1 * q2.z,
+				scale0 * q1.w + scale1 * q2.w
+			).normalize();
+		}
+
+		Mat4 toMatrix() const
+		{
+			Quat q = normalize();
+			float xx = q.x * q.x;
+			float yy = q.y * q.y;
+			float zz = q.z * q.z;
+			float xy = q.x * q.y;
+			float xz = q.x * q.z;
+			float yz = q.y * q.z;
+			float wx = q.w * q.x;
+			float wy = q.w * q.y;
+			float wz = q.w * q.z;
+
+			return Mat4(
+				1.0f - 2.0f * (yy + zz), 2.0f * (xy - wz),        2.0f * (xz + wy),        0.0f,
+				2.0f * (xy + wz),        1.0f - 2.0f * (xx + zz), 2.0f * (yz - wx),        0.0f,
+				2.0f * (xz - wy),        2.0f * (yz + wx),        1.0f - 2.0f * (xx + yy), 0.0f,
+				0.0f,                    0.0f,                    0.0f,                    1.0f
+			);
+		}
 	};
 } // namespace FCT

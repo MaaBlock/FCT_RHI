@@ -9,11 +9,11 @@
 
 namespace FCT {
     void Context::_nextFrame() {
-        m_nextFrame = true;
+        m_nextFrame.store(true, std::memory_order_release);
     }
 
     void Context::_currentFlush() {
-        m_currentFlush = true;
+        m_currentFlush.store(true, std::memory_order_release);
     }
 
     Image* Context::loadTexture(const std::string& filename)
@@ -191,16 +191,16 @@ namespace FCT {
         m_renderGraph = nullptr;
         m_resourceManager = nullptr;
         m_compiler = nullptr;
-        m_ctxRunning = true;
+        m_ctxRunning.store(true, std::memory_order_relaxed);
         //m_flushWnd = nullptr;
-        m_nextFrame = false;
-        m_currentFlush = true;
-        bool isInited = false;
-        m_submitThread = std::thread([this,&isInited]
+        m_nextFrame.store(false, std::memory_order_relaxed);
+        m_currentFlush.store(true, std::memory_order_relaxed);
+        std::atomic<bool> isInited{false};
+        m_submitThread = std::thread([this, &isInited]
         {
             tracy::SetThreadName("RHI Submit Thread");
             m_submitThreadId = std::this_thread::get_id();
-            isInited = true;
+            isInited.store(true, std::memory_order_release);
             submitThread();
         });
         FCT_WAIT_FOR(isInited);
@@ -245,6 +245,7 @@ namespace FCT {
                 ZoneScopedN("AdvanceFrameIndex");
                 advanceLogicFrame();
                 advanceSubmitFrame();
+                flushDeferredReleases(static_cast<uint32_t>(m_submitFrameIndex));
             },
             {},
             {}
@@ -253,9 +254,70 @@ namespace FCT {
     }
 
     Context::~Context() {
-        m_ctxRunning = false;
+        stopSubmitThread();
+        m_transferRunning.store(false, std::memory_order_release);
+        if (m_transferThread.joinable()) {
+            m_transferThread.join();
+        }
         FCT_SAFE_DELETE(m_renderGraph);
-        m_submitThread.join();
+        flushAllDeferredReleases();
+    }
+
+    void Context::deferRelease(RefCount* resource)
+    {
+        if (!resource)
+        {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(m_deferredReleaseMutex);
+        uint32_t maxFrames = m_maxFrameInFlight > 0 ? m_maxFrameInFlight : 3;
+        if (m_deferredReleases.size() < maxFrames)
+        {
+            m_deferredReleases.resize(maxFrames);
+        }
+        uint32_t slot = static_cast<uint32_t>(m_logicFrameIndex % maxFrames);
+        m_deferredReleases[slot].push_back(resource);
+    }
+
+    void Context::flushDeferredReleases(uint32_t frameIdx)
+    {
+        std::vector<RefCount*> toRelease;
+        {
+            std::lock_guard<std::mutex> lock(m_deferredReleaseMutex);
+            if (frameIdx < m_deferredReleases.size())
+            {
+                toRelease.swap(m_deferredReleases[frameIdx]);
+            }
+        }
+        for (RefCount* res : toRelease)
+        {
+            if (res)
+            {
+                res->release();
+            }
+        }
+    }
+
+    void Context::flushAllDeferredReleases()
+    {
+        std::vector<std::vector<RefCount*>> allQueues;
+        {
+            std::lock_guard<std::mutex> lock(m_deferredReleaseMutex);
+            allQueues.swap(m_deferredReleases);
+        }
+        for (auto& queue : allQueues)
+        {
+            for (RefCount* res : queue)
+            {
+                if (res)
+                {
+                    res->release();
+                }
+            }
+        }
+    }
+
+    void Context_UnusedStub() {
     }
 
     PipeHub& Context::pipeHub()

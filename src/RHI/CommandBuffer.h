@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/3/31.
 //
 #ifndef COMMANDBUFFER_H
@@ -30,6 +30,14 @@ namespace FCT
             Semaphore* semaphore;
             PipelineStages stages;
         };
+        struct DrawIndexedIndirectCommand
+        {
+            uint32_t indexCount = 0;
+            uint32_t instanceCount = 0;
+            uint32_t firstIndex = 0;
+            int32_t vertexOffset = 0;
+            uint32_t firstInstance = 0;
+        };
         class CommandBuffer : public RefCount
         {
         public:
@@ -51,6 +59,13 @@ namespace FCT
             virtual void scissor(Vec2 lt,Vec2 rb) = 0;
             virtual void draw(size_t vertexBegin,size_t instanceBegin,size_t vertexSize,size_t instanceSize) = 0;
             virtual void drawIndex(size_t indexBegin, size_t instanceBegin, size_t indexCount, size_t instanceCount, size_t firstVertex = 0) = 0;
+            virtual void drawIndexedIndirect(void* indirectBuffer, size_t byteOffset, uint32_t drawCount = 1, uint32_t stride = sizeof(DrawIndexedIndirectCommand))
+            {
+                (void)indirectBuffer;
+                (void)byteOffset;
+                (void)drawCount;
+                (void)stride;
+            }
             virtual void bindPipieline(RasterizationPipeline* pipeline) = 0;
             virtual void end() = 0;
             virtual void submit() = 0;

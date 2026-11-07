@@ -1,13 +1,15 @@
-﻿//
+//
 // Created by Administrator on 2025/5/8.
 //
 #ifndef OBJECTPOOL_H
 #define OBJECTPOOL_H
 #include "../DebugTools/MemoryCheak.h"
 #include "../MutilThreadBase/RefCount.h"
+
 namespace FCT
 {
     constexpr size_t SingleChunkObjectNums = 1024;
+
     template<typename T>
     class ObjectPoolChunk
     {
@@ -32,7 +34,7 @@ namespace FCT
             }
         }
         template<typename... Args>
-        T* addSingle(size_t index,Args... args)
+        T* addSingle(size_t index, Args&&... args)
         {
             m_size = index + 1;
             return New<T>(m_objects + index,
@@ -62,82 +64,108 @@ namespace FCT
         size_t m_size;
         T* m_objects;
     };
+
+    /**
+     * @brief 线程安全分块对象池，使用无上限 LIFO 回收栈替代定长 1024 队列，消除高并发分配竞态与槽位泄漏
+     */
     template<typename T, typename... Args>
     class ObjectPool
     {
     public:
         using DestroyCallback = std::function<void(T*)>;
-        explicit ObjectPool(Args... args) :
-        m_size(0),
-        m_destroyCallback(nullptr),
-        m_constructorArgs(std::forward<Args>(args)...)
-        {
 
-        }
-        ~ObjectPool()
+        explicit ObjectPool(Args... args)
+            : m_size(0)
+            , m_destroyCallback(nullptr)
+            , m_constructorArgs(std::forward<Args>(args)...)
         {
-
         }
+
+        ~ObjectPool() = default;
+
         T* alloc()
         {
-            size_t index;
-            if (m_freeIndices.pop(index))
+            std::lock_guard<std::mutex> lock(m_poolMutex);
+            if (!m_freeIndices.empty())
             {
-
+                const size_t index = m_freeIndices.back();
+                m_freeIndices.pop_back();
                 return m_chunks[index / SingleChunkObjectNums].get(index % SingleChunkObjectNums);
+            }
+            return addSingleLocked();
+        }
+
+        void setDestroyCallback(DestroyCallback callback)
+        {
+            std::lock_guard<std::mutex> lock(m_poolMutex);
+            m_destroyCallback = std::move(callback);
+        }
+
+        size_t totalAllocatedCount() const
+        {
+            std::lock_guard<std::mutex> lock(m_poolMutex);
+            return m_size;
+        }
+
+        size_t freeCount() const
+        {
+            std::lock_guard<std::mutex> lock(m_poolMutex);
+            return m_freeIndices.size();
+        }
+
+    protected:
+        void recycleSlot(T* ptr, size_t index)
+        {
+            DestroyCallback cb;
+            {
+                std::lock_guard<std::mutex> lock(m_poolMutex);
+                cb = m_destroyCallback;
+            }
+            if (cb)
+            {
+                cb(ptr);
+            }
+            std::lock_guard<std::mutex> lock(m_poolMutex);
+            m_freeIndices.push_back(index);
+        }
+
+        T* addSingleLocked()
+        {
+            T* ret = nullptr;
+            if ((m_size % SingleChunkObjectNums) != 0)
+            {
+                ret = std::apply([this](auto&... args)
+                {
+                    return m_chunks[m_size / SingleChunkObjectNums]
+                        .addSingle(m_size % SingleChunkObjectNums, args...);
+                }, m_constructorArgs);
             }
             else
             {
-                return addSingle();
-            }
-        }
-        void setDestroyCallback(DestroyCallback callback)
-        {
-            m_destroyCallback = std::move(callback);
-        }
-    protected:
-        T* addSingle()
-        {
-            T* ret;
-            if (m_size % SingleChunkObjectNums)
-            {
-                ret = std::apply([this](auto&&... args)
-                {
-                    return m_chunks[m_size / SingleChunkObjectNums]
-                           .addSingle(m_size % SingleChunkObjectNums,
-                           std::forward<decltype(args)>(args)...);
-                }, m_constructorArgs);
-            } else
-            {
                 m_chunks.emplace_back();
-                ret = std::apply([this](auto&&... args)
+                ret = std::apply([this](auto&... args)
                 {
                     return m_chunks.back()
-                           .addSingle(m_size % SingleChunkObjectNums,
-                           std::forward<decltype(args)>(args)...);
+                        .addSingle(m_size % SingleChunkObjectNums, args...);
                 }, m_constructorArgs);
             }
+
             if constexpr (FCT::IsDeletableTrait<T>::value)
             {
-                if (m_destroyCallback)
+                const size_t index = m_size;
+                ret->setDeleter([this, index](T* ptr)
                 {
-                    size_t index = m_size;
-                    ret->setDeleter([this,index](T* ptr)
-                    {
-                        m_destroyCallback(ptr);
-                        m_freeIndices.push(index);
-                    });
-                }
-            } else
-            {
-                //不应该出现这个 分支
+                    recycleSlot(ptr, index);
+                });
             }
-            m_size++;
+            ++m_size;
             return ret;
         }
+
+        mutable std::mutex m_poolMutex;
         size_t m_size;
         std::vector<ObjectPoolChunk<T>> m_chunks;
-        boost::lockfree::queue<size_t,boost::lockfree::capacity<1024>> m_freeIndices;
+        std::vector<size_t> m_freeIndices;
         DestroyCallback m_destroyCallback;
         std::tuple<Args...> m_constructorArgs;
     };

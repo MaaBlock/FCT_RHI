@@ -51,6 +51,7 @@ namespace FCT
 
         void createPlatform() override;
         bool isRunning() const override;
+        void setVisible(bool visible) override;
         void swapBuffers() override;
         int getWidth() override;
         int getHeight() override;

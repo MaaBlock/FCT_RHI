@@ -38,6 +38,7 @@ namespace FCT
         class CommandBuffer;
     }
 }
+#include "./Image.h"
 #include "./RenderGraph_EnablePassClear.h"
 #include "./RenderGraph_TextureSize.h"
 #include "./RenderGraph_Texture.h"
@@ -164,6 +165,8 @@ namespace FCT
          * @endcond
          */
         ShaderStage stage;
+        bool isStorage = false;
+        uint32_t order = 0;
     };
 
     class RenderGraphPassNode : public RenderGraphNode
@@ -246,8 +249,8 @@ namespace FCT
     class RenderGraph : private IEventSystem<EventSystemConfig::TriggerOnly>{
         struct ImageState {
             ImageLayout currentLayout = ImageLayout::undefined;
-            PipelineStage lastStage = PipelineStage::topOfPipe;
-            AccessFlag lastAccess = AccessFlag::none;
+            PipelineStages lastStage = PipelineStage::topOfPipe;
+            AccessFlags lastAccess = AccessFlag::none;
             std::string lastWriterGroup;
             bool needsBarrier = false;
         };
@@ -255,11 +258,11 @@ namespace FCT
             Image* image;
             ImageLayout oldLayout;
             ImageLayout newLayout;
-            PipelineStage srcStage;
-            PipelineStage dstStage;
-            AccessFlag srcAccess;
-            AccessFlag dstAccess;
-            ImageAspect aspect;
+            PipelineStages srcStage;
+            PipelineStages dstStage;
+            AccessFlags srcAccess;
+            AccessFlags dstAccess;
+            ImageAspects aspect;
         };
     private:
         bool m_needRecompiled = false;

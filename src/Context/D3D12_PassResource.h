@@ -32,7 +32,8 @@ namespace FCT
     {
     public:
         explicit D3D12_PassResource(D3D12_Context* ctx);
-        ~D3D12_PassResource() override = default;
+        ~D3D12_PassResource() override;
+        void releaseAllocatedTables();
 
         void addConstBuffer(RHI::ConstBuffer* buffer) override;
         void addSampler(Sampler* sampler, SamplerElement element) override;

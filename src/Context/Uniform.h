@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <vector>
 #include <string>
@@ -112,7 +112,7 @@ namespace FCT
         case ConstType::Vec4:
             return sizeof(Vec4);
         case ConstType::Vec3:
-            return sizeof(Vec3);
+            return sizeof(Vec3<>);
         case ConstType::Vec2:
             return sizeof(Vec2);
         case ConstType::Float:
@@ -355,9 +355,12 @@ namespace FCT
             }
 
             for (size_t i = 0; i < m_elementCount; ++i) {
-                if (m_elements[i].getType() != other.m_elements[i].getType()) {
+                if (m_elements[i].getType() != other.m_elements[i].getType())
                     return false;
-                }
+                if (m_elements[i].getElementCount() != other.m_elements[i].getElementCount())
+                    return false;
+                if (!StringEquals(m_elements[i].getName(), other.m_elements[i].getName()))
+                    return false;
             }
             return true;
         }
@@ -367,6 +370,8 @@ namespace FCT
             boost::hash_combine(seed, std::string(m_name));
             for (size_t i = 0; i < m_elementCount; ++i) {
                 boost::hash_combine(seed, m_elements[i].getType());
+                boost::hash_combine(seed, m_elements[i].getElementCount());
+                boost::hash_combine(seed, std::string(m_elements[i].getName()));
             }
             return seed;
         }

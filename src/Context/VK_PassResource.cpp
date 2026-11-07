@@ -41,6 +41,7 @@ namespace FCT
     void VK_PassResource::addTexture(Image* texture, TextureElement element)
     {
         m_textures[element] = texture;
+        m_textureViewHashes[element] = texture ? texture->textureViewHash() : 0;
         markAllDescriptorSetsDirty();
         markAllDescriptorSetsNeedRecreate();
     }
@@ -55,6 +56,7 @@ namespace FCT
                 markAllDescriptorSetsNeedRecreate();
             }
             m_textures[element] = texture;
+            m_textureViewHashes[element] = texture->textureViewHash();
             markDescriptorSetDirty(m_ctx->currentFrameIndex());
         }
     }
@@ -168,14 +170,31 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
                 }
                 outLayouts[setIndex] = device.createDescriptorSetLayout(layoutInfo);
             } catch (const vk::SystemError& e) {
+                bool emptyStillUsed = false;
                 for (auto& layout : outLayouts) {
-                    if (layout) {
+                    if (layout == emptyLayout) {
+                        emptyStillUsed = true;
+                    } else if (layout) {
                         device.destroyDescriptorSetLayout(layout);
-                        layout = nullptr;
                     }
+                    layout = nullptr;
+                }
+                if (emptyLayout) {
+                    device.destroyDescriptorSetLayout(emptyLayout);
                 }
                 throw std::runtime_error("Failed to create descriptor set layout: " + std::string(e.what()));
             }
+        }
+
+        bool emptyLayoutUsed = false;
+        for (const auto& layout : outLayouts) {
+            if (layout == emptyLayout) {
+                emptyLayoutUsed = true;
+                break;
+            }
+        }
+        if (!emptyLayoutUsed && emptyLayout) {
+            device.destroyDescriptorSetLayout(emptyLayout);
         }
 
         vk::DescriptorSetAllocateInfo allocInfo;
@@ -207,9 +226,9 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
 
         m_descriptorSets.resize(maxFrames);
         m_dirtyFlags.resize(maxFrames, true);
+        m_needRecreate.assign(maxFrames, false);
 
         for (uint32_t frameIdx = 0; frameIdx < maxFrames; ++frameIdx) {
-            m_descriptorSetLayouts.clear();
             if (createDescriptorSetsAndLayouts(frameIdx, m_descriptorSetLayouts, m_descriptorSets[frameIdx])) {
 
                 m_dirtyFlags[frameIdx] = true;
@@ -272,16 +291,18 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
                 continue;
             }
 
+            if (!texture) {
+                continue;
+            }
+            auto* vkTexture = static_cast<RHI::VK_TextureView*>(texture->currentTextureView());
+            if (!vkTexture || !vkTexture->view()) {
+                continue;
+            }
+
             vk::DescriptorImageInfo imageInfo;
             imageInfo.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
             imageInfo.setSampler(nullptr);
-
-            if (texture) {
-                auto* vkTexture = static_cast<RHI::VK_TextureView*>(texture->currentTextureView());
-                imageInfo.setImageView(vkTexture ? vkTexture->view() : VK_NULL_HANDLE);
-            } else {
-                imageInfo.setImageView(VK_NULL_HANDLE);
-            }
+            imageInfo.setImageView(vkTexture->view());
             
             textureInfos.push_back(imageInfo);
 
@@ -304,16 +325,18 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
                 continue;
             }
 
+            if (!sampler) {
+                continue;
+            }
+            auto* vkSampler = static_cast<RHI::VK_Sampler*>(sampler);
+            if (!vkSampler || !vkSampler->getSampler()) {
+                continue;
+            }
+
             vk::DescriptorImageInfo samplerInfo;
             samplerInfo.setImageView(nullptr);
             samplerInfo.setImageLayout(vk::ImageLayout::eUndefined);
-
-            if (sampler) {
-                auto* vkSampler = static_cast<RHI::VK_Sampler*>(sampler);
-                samplerInfo.setSampler(vkSampler->getSampler());
-            } else {
-                samplerInfo.setSampler(VK_NULL_HANDLE);
-            }
+            samplerInfo.setSampler(vkSampler->getSampler());
             
             samplerInfos.push_back(samplerInfo);
 
@@ -360,9 +383,7 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
         {
             return false;
         }
-        m_descriptorSetLayouts.clear();
         if (createDescriptorSetsAndLayouts(frameIdx, m_descriptorSetLayouts, m_descriptorSets[frameIdx])) {
-            fout << std::hex << m_descriptorSets[frameIdx].data()  << " has been created" << std::endl;
             m_needRecreate[frameIdx] = false;
             m_dirtyFlags[frameIdx] = true;
             return true;
@@ -416,7 +437,7 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
         bool hasChange = false;
         for (auto& it : m_textureViewHashes)
         {
-            if (m_textures[it.first]->textureViewHash() != it.second)
+            if (m_textures[it.first] && m_textures[it.first]->textureViewHash() != it.second)
             {
                 hasChange = true;
                 it.second = m_textures[it.first]->textureViewHash();

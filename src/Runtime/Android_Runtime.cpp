@@ -2,6 +2,7 @@
 #include "Runtime.h"
 #include "Android_Runtime.h"
 
+extern "C" int main(int argc, char* argv[]);
 
 namespace FCT{
     Android_Runtime* g_androidRuntime;
@@ -31,7 +32,9 @@ namespace FCT{
     }
 
     void Android_Runtime::entry() {
-        main();
+        static char arg0[] = "FCT_Android";
+        char* argv[] = { arg0, nullptr };
+        main(1, argv);
     }
 
     void Android_Runtime::cleanUp() {

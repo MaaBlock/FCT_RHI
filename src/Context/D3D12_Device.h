@@ -35,6 +35,7 @@ namespace FCT
         RHI::DepthStencilView* newRhiDepthStencilView() override;
         RHI::TextureView* newRhiTextureView() override;
         RasterizationState* newRasterizationState() override;
+        DepthStencilState* newDepthStencilState() override;
         BlendState* newBlendState() override;
         Sampler* newSampler() override;
         PassResource* newPassResource() override;

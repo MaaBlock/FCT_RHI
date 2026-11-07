@@ -91,8 +91,6 @@ namespace FCT
         void VK_IndexBuffer::destroy()
         {
             if (m_isCreated) {
-                m_ctx->getDevice().waitIdle();
-
                 for (size_t i = 0; i < m_buffers.size(); i++) {
                     if (m_buffers[i]) {
                         m_ctx->getDevice().destroyBuffer(m_buffers[i]);

@@ -1,4 +1,4 @@
-﻿#ifndef FCT_VERTEX_H
+#ifndef FCT_VERTEX_H
 #define FCT_VERTEX_H
 #include "./Format.h"
 #include "./DataTypes.h"
@@ -21,6 +21,8 @@ namespace FCT
         CommandSize,
         BatchID,
         FaceId,
+        BoneIds4i,
+        BoneWeights4f,
         Custom
     };
     /*
@@ -51,6 +53,8 @@ namespace FCT
         Color7,
         Tangent,        // 对应 tangent
         Bitangent,      // 对应 bitangent
+        BoneIds,        // 对应 boneIds
+        BoneWeights,    // 对应 boneWeights
         None            // 不对应任何ModelVertex属性
     };
     constexpr ModelVertexAttribute GetDefaultModelAttribute(VtxType type) noexcept {
@@ -78,6 +82,12 @@ namespace FCT
 
         case VtxType::VertexCoord2f:
             return ModelVertexAttribute::TexCoord1;
+
+        case VtxType::BoneIds4i:
+            return ModelVertexAttribute::BoneIds;
+
+        case VtxType::BoneWeights4f:
+            return ModelVertexAttribute::BoneWeights;
 
         //None
         case VtxType::FaceId:
@@ -128,6 +138,10 @@ namespace FCT
             return Format::R32_UINT;
         case VtxType::CommandSize:
             return Format::R32_UINT;
+        case VtxType::BoneIds4i:
+            return Format::R32G32B32A32_SINT;
+        case VtxType::BoneWeights4f:
+            return Format::R32G32B32A32_SFLOAT;
         case VtxType::Custom:
         default:
             return Format::UNDEFINED;
@@ -160,6 +174,10 @@ namespace FCT
             return "cmdSize";
         case VtxType::FaceId:
             return "faceId";
+        case VtxType::BoneIds4i:
+            return "boneIds";
+        case VtxType::BoneWeights4f:
+            return "boneWeights";
         case VtxType::Custom:
         default:
             return "Custom";
