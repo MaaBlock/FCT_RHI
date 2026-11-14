@@ -1,11 +1,12 @@
-//
-// Created by Administrator on 2025/3/24.
-//
+#pragma once
+#ifndef VK_TRADITIONALPIPELINE_H
+#define VK_TRADITIONALPIPELINE_H
+
 #include "./VK_RasterizationPipeline.h"
 #include "./VertexShader.h"
 #include "./PixelShader.h"
-#ifndef VK_TRADITIONALPIPELINE_H
-#define VK_TRADITIONALPIPELINE_H
+#include "../Base/Status.h"
+
 namespace FCT
 {
     class VK_Context;
@@ -14,23 +15,20 @@ namespace FCT
         class VK_TraditionalPipeline : public VK_RasterizationPipeline
         {
         public:
-            PipelineType getType() const override;
-            VK_TraditionalPipeline(VK_Context* ctx);
+            explicit VK_TraditionalPipeline(VK_Context* ctx);
             ~VK_TraditionalPipeline() override;
+
+            PipelineType getType() const noexcept override { return PipelineType::Traditional; }
             void addResources(IPipelineResource* resource) override;
-            void create() override;
+            Status create() override;
+
         private:
             void generateDefaultResources();
-            void createDescriptorSetLayouts();
-            FCT::VertexShader* m_vertexShader;
-            FCT::PixelShader* m_pixelShader;
-            vk::DescriptorSetLayout m_emptyLayout;
-            /*
-            VK_VertexShader* m_vertexShader;
-            VK_PixelShader* m_pixelShader;
-            */
+            Status createDescriptorSetLayouts();
+            FCT::VertexShader* m_vertexShader = nullptr;
+            FCT::PixelShader* m_pixelShader = nullptr;
+            vk::DescriptorSetLayout m_emptyLayout = nullptr;
         };
-
     }
 }
-#endif //VK_TRADITIONALPIPELINE_H
+#endif // VK_TRADITIONALPIPELINE_H

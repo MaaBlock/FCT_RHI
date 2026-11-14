@@ -1,4 +1,5 @@
-﻿#include "../FCTAPI.h"
+#include "../FCTAPI.h"
+#include <cassert>
 
 namespace FCT
 {
@@ -7,7 +8,6 @@ namespace FCT
         VK_ConstBuffer::VK_ConstBuffer(VK_Context* ctx)
         {
             m_ctx = ctx;
-            m_buffer = nullptr;
             m_frameNeedsUpdate.clear();
         }
 
@@ -25,86 +25,32 @@ namespace FCT
 
         void VK_ConstBuffer::mapData()
         {
-            if (!m_buffer) {
-                return;
-            }
-/*
-            if (!m_buffer->isDirty()) {
-                return;
-            }
-*/
-            const void* data = m_buffer->getData();
-            size_t size = m_buffer->getSize();
+            // Note: m_buffer 已解耦移除，纯数据上传由 upload() 接口统一驱动
+        }
 
+        void VK_ConstBuffer::upload(const void* data, size_t size)
+        {
+            upload(data, size, 0);
+        }
+
+        void VK_ConstBuffer::upload(const void* data, size_t size, size_t offset)
+        {
             if (!data || size == 0) {
                 return;
             }
-
-            uint32_t maxFrames = m_ctx->maxFrameInFlight();
-            size_t copySize = std::min(size, static_cast<size_t>(m_bufferInfos[0].range));
-            UpdateFrequency frequency = m_layout.getUpdateFrequency();
-
-            switch (frequency) {
-            case UpdateFrequency::PerFrame:
-            case UpdateFrequency::Dynamic:
-                {
-                    uint32_t frameIndex = m_ctx->currentSubmitFrameIndex();
-                    if (frameIndex < m_mappedData.size() && m_mappedData[frameIndex]) {
-                        memcpy(m_mappedData[frameIndex], data, copySize);
-                    }
-                    break;
-                }
-
-            case UpdateFrequency::Static:
-            case UpdateFrequency::PerObject:
-                {
-                    // 对于静态或每对象数据，更新当前帧并标记其他帧需要更新
-                    uint32_t currentFrame = m_ctx->currentSubmitFrameIndex();
-
-                    // 更新当前帧
-                    if (currentFrame < m_mappedData.size() && m_mappedData[currentFrame]) {
-                        memcpy(m_mappedData[currentFrame], data, copySize);
-                    }
-
-                    // 标记其他帧需要更新
-                    if (m_frameNeedsUpdate.size() < maxFrames) {
-                        m_frameNeedsUpdate.resize(maxFrames, false);
-                    }
-
-                    for (uint32_t i = 0; i < maxFrames; i++) {
-                        if (i != currentFrame) {
-                            m_frameNeedsUpdate[i] = true;
-                        }
-                    }
-
-                    break;
+            uint32_t currentFrame = m_ctx ? m_ctx->currentSubmitFrameIndex() : 0;
+            if (currentFrame < m_mappedData.size() && m_mappedData[currentFrame]) {
+                size_t maxRange = static_cast<size_t>(m_bufferInfos[currentFrame].range);
+                if (offset < maxRange) {
+                    size_t copySize = std::min(size, maxRange - offset);
+                    memcpy(static_cast<char*>(m_mappedData[currentFrame]) + offset, data, copySize);
                 }
             }
-
-            m_buffer->clearDirty();
         }
 
         void VK_ConstBuffer::checkAndUpdateCurrentFrame()
         {
-            if (!m_buffer) {
-                return;
-            }
-
-            uint32_t currentFrame = m_ctx->currentSubmitFrameIndex();
-
-            if (currentFrame < m_frameNeedsUpdate.size() && m_frameNeedsUpdate[currentFrame]) {
-                if (currentFrame < m_mappedData.size() && m_mappedData[currentFrame]) {
-                    const void* data = m_buffer->getData();
-                    size_t size = m_buffer->getSize();
-
-                    if (data && size > 0) {
-                        size_t copySize = std::min(size, static_cast<size_t>(m_bufferInfos[currentFrame].range));
-                        memcpy(m_mappedData[currentFrame], data, copySize);
-                    }
-                }
-
-                m_frameNeedsUpdate[currentFrame] = false;
-            }
+            // Note: m_buffer 已移除，无需从 CPU UniformBuffer 拷贝
         }
 
         const vk::DescriptorBufferInfo& VK_ConstBuffer::currentBufferInfo()
@@ -134,34 +80,32 @@ namespace FCT
             m_frameNeedsUpdate.resize(maxFramesInFlight, false);
 
             for (uint32_t i = 0; i < maxFramesInFlight; i++) {
-                try {
-                    vk::BufferCreateInfo bufferInfo;
-                    bufferInfo.size = bufferSize;
-                    bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
-                    bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+                vk::BufferCreateInfo bufferInfo;
+                bufferInfo.size = bufferSize;
+                bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
+                bufferInfo.sharingMode = vk::SharingMode::eExclusive;
 
-                    m_buffers[i] = device.createBuffer(bufferInfo);
+                m_buffers[i] = device.createBuffer(bufferInfo);
+                assert(m_buffers[i] && "VK_ConstBuffer::create: 无法创建 Uniform Buffer");
 
-                    vk::MemoryRequirements memRequirements = device.getBufferMemoryRequirements(m_buffers[i]);
+                vk::MemoryRequirements memRequirements = device.getBufferMemoryRequirements(m_buffers[i]);
 
-                    vk::MemoryAllocateInfo allocInfo;
-                    allocInfo.allocationSize = memRequirements.size;
-                    allocInfo.memoryTypeIndex = m_ctx->findMemoryType(
-                        memRequirements.memoryTypeBits,
-                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-                    );
+                vk::MemoryAllocateInfo allocInfo;
+                allocInfo.allocationSize = memRequirements.size;
+                allocInfo.memoryTypeIndex = m_ctx->findMemoryType(
+                    memRequirements.memoryTypeBits,
+                    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+                );
 
-                    m_memories[i] = device.allocateMemory(allocInfo);
+                m_memories[i] = device.allocateMemory(allocInfo);
+                assert(m_memories[i] && "VK_ConstBuffer::create: 无法分配 Uniform Buffer 显存");
 
-                    device.bindBufferMemory(m_buffers[i], m_memories[i], 0);
+                device.bindBufferMemory(m_buffers[i], m_memories[i], 0);
 
-                    m_mappedData[i] = device.mapMemory(m_memories[i], 0, bufferSize);
+                m_mappedData[i] = device.mapMemory(m_memories[i], 0, bufferSize);
+                assert(m_mappedData[i] && "VK_ConstBuffer::create: 无法映射 Uniform Buffer 内存");
 
-                    memset(m_mappedData[i], 0, static_cast<size_t>(bufferSize));
-                }
-                catch (const vk::SystemError& e) {
-                    throw std::runtime_error("Failed to create uniform buffer: " + std::string(e.what()));
-                }
+                memset(m_mappedData[i], 0, static_cast<size_t>(bufferSize));
             }
 
             m_bufferInfos.resize(maxFramesInFlight);

@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+title: "FCT_RHI: Data-Driven C++20 Multi-Backend RHI and RenderGraph Library"
+message: "If you use FCT_RHI in your projects, please cite this repository."
+type: software
+authors:
+  - name: "MaaBlock"
+    website: "https://github.com/MaaBlock"
+repository-code: "https://github.com/MaaBlock/FCT_RHI"
+abstract: >-
+  Cross-platform C++20 Render Hardware Interface (RHI) and RenderGraph library for Vulkan,
+  DirectX 12, and WebGL2/WebAssembly, featuring data-driven rendering, a declarative data
+  configuration workflow, and pluggable microkernel modules.
+keywords:
+  - rhi
+  - render-hardware-interface
+  - render-graph
+  - data-driven
+  - data-configuration-workflow
+  - microkernel
+  - plugin-architecture
+  - vulkan
+  - directx-12
+  - webgl2
+  - webassembly
+  - cpp20
+  - bindless
+  - ray-tracing
+  - 数据驱动
+  - 数据配置流程
+  - 微内核插件制

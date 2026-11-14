@@ -88,8 +88,14 @@ namespace FCT
         m_resourceDevice = new D3D12_Device(this);
     }
 
+    void D3D12_Context::waitGpu()
+    {
+        waitForGpuIdle();
+    }
+
     D3D12_Context::~D3D12_Context()
     {
+        requestExit();
         waitForGpuIdle();
 
         for (auto& [layout, cb] : m_emptyConstBuffers)

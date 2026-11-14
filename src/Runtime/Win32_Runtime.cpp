@@ -1,14 +1,20 @@
 #include "../FCTAPI.h"
+#include "../Context/WGL2_Context.h"
 
 namespace FCT {
 	struct Win32_RuntimeCommon : public RuntimeCommon {
 	
 	};
 	void Runtime::init() {
-		g_common = FCT_NEW(Win32_RuntimeCommon);
+		if (!g_common) {
+			g_common = FCT_NEW(Win32_RuntimeCommon);
+		}
 	}
 	void Runtime::term() {
-	    FCT_DELETE(g_common);
+		if (g_common) {
+			FCT_DELETE(g_common);
+			g_common = nullptr;
+		}
 	}
 
 	Window* Runtime::createWindow()
@@ -64,6 +70,10 @@ namespace FCT {
 
 	Context* Runtime::createContext(ContextBackend backend)
 	{
+		if (backend == ContextBackend::WGL2)
+		{
+			return FCT_NEW(WGL2_Context, this);
+		}
 #ifdef FCT_USE_D3D12
 		if (backend == ContextBackend::D3D12)
 		{
@@ -79,6 +89,11 @@ namespace FCT {
 		return FCT_NEW(D3D12_Context, g_common->d3d12ContextCommon);
 	}
 #endif
+
+	WGL2_Context* Runtime::createWGL2Context()
+	{
+		return FCT_NEW(WGL2_Context, this);
+	}
 
 	ImageLoader* Runtime::createImageLoader()
 	{

@@ -51,16 +51,19 @@ namespace FCT
         return static_cast<SingleBufferImage*>(m_image)->m_image->samples();
     }
 
-    SingleBufferImage::SingleBufferImage(Context* ctx) : Image(ctx), m_image(nullptr), m_rtv(nullptr) {
+    SingleBufferImage::SingleBufferImage(Context* ctx)
+        : Image(ctx), m_image(nullptr), m_rtv(nullptr), m_dsv(nullptr), m_srv(nullptr), m_initData{}, m_usage() {
+        m_initData.data = nullptr;
+        m_initData.size = 0;
         m_behavior = new BeforeCreateImageBehavior(this);
-        m_srv = nullptr;
     }
 
     SingleBufferImage::~SingleBufferImage() {
         removeTextureViewId(this);
-        FCT_SAFE_RELEASE(m_image);
         FCT_SAFE_RELEASE(m_rtv);
+        FCT_SAFE_RELEASE(m_dsv);
         FCT_SAFE_RELEASE(m_srv);
+        FCT_SAFE_RELEASE(m_image);
     }
 
     void SingleBufferImage::create() {
@@ -68,6 +71,9 @@ namespace FCT
     }
     
     void SingleBufferImage::create(bool uploadData) {
+        FCT_SAFE_RELEASE(m_rtv);
+        FCT_SAFE_RELEASE(m_dsv);
+        FCT_SAFE_RELEASE(m_srv);
         FCT_SAFE_RELEASE(m_image);
         m_image = m_ctx->createResource<RHI::Image>();
         m_image->width(m_width);
@@ -78,16 +84,11 @@ namespace FCT
         m_image->isCubeMap(m_isCubeMap);
         m_image->initData(m_initData);
         m_image->usage(m_usage);
+        m_image->setRenderbuffer(m_isRenderbuffer);
         m_image->create(uploadData);
-        if (m_usage & ImageUsage::Texture && !m_srv)
-        {
-            m_srv = m_ctx->createResource<RHI::TextureView>();
-            m_srv->image(m_image);
-            m_srv->create();
-            assignNewTextureViewId(this);
-        }
         delete m_behavior;
         m_behavior = new SingleBufferAfterCreateImageBehavior(this);
+        as(m_usage);
     }
 
     void SingleBufferImage::uploadAsync(std::vector<uint8_t> data, std::function<void()> callback)
@@ -107,23 +108,54 @@ namespace FCT
         if (m_image) m_image->updateData(data, dataSize, fence, onCompletion);
     }
 
+    void SingleBufferImage::updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t arrayLayer, uint32_t mipLevel, const void* pixelData, size_t rowPitch)
+    {
+        if (m_image) m_image->updateSubRegion(x, y, width, height, arrayLayer, mipLevel, pixelData, rowPitch);
+    }
+
     void SingleBufferImage::create(RHI::Image* image) {
+        FCT_SAFE_RELEASE(m_rtv);
+        FCT_SAFE_RELEASE(m_dsv);
+        FCT_SAFE_RELEASE(m_srv);
         FCT_SAFE_RELEASE(m_image);
         m_image = image;
-        m_image->addRef();
-        m_width = image->width();
-        m_height = image->height();
+        if (m_image) {
+            m_image->addRef();
+            m_width = image->width();
+            m_height = image->height();
+        }
         delete m_behavior;
         m_behavior = new SingleBufferAfterCreateImageBehavior(this);
+        as(m_usage);
     }
 
     void SingleBufferImage::as(ImageUsages usage) {
-        if (usage & ImageUsage::RenderTarget && !m_rtv) {
-            m_rtv = m_ctx->createResource<RHI::RenderTargetView>();
-            m_rtv->image(m_image);
-            m_rtv->create();
-        }
         m_usage |= usage;
+        if (!m_image || !m_ctx) {
+            return;
+        }
+        if ((m_usage & ImageUsage::RenderTarget) && !m_rtv) {
+            m_rtv = m_ctx->createResource<RHI::RenderTargetView>();
+            if (m_rtv) {
+                m_rtv->image(m_image);
+                m_rtv->create();
+            }
+        }
+        if ((m_usage & ImageUsage::DepthStencil) && !m_dsv) {
+            m_dsv = m_ctx->createResource<RHI::DepthStencilView>();
+            if (m_dsv) {
+                m_dsv->image(m_image);
+                (void)m_dsv->create();
+            }
+        }
+        if ((m_usage & ImageUsage::Texture) && !m_srv) {
+            m_srv = m_ctx->createResource<RHI::TextureView>();
+            if (m_srv) {
+                m_srv->image(m_image);
+                m_srv->create();
+                assignNewTextureViewId(this);
+            }
+        }
     }
 
     void SingleBufferImage::bind(Context* ctx) {
@@ -141,19 +173,10 @@ namespace FCT
         Samples currentSamples = m_samples;
         ImageUsages currentUsage = m_usage;
 
+        FCT_SAFE_RELEASE(m_rtv);
+        FCT_SAFE_RELEASE(m_dsv);
+        FCT_SAFE_RELEASE(m_srv);
         FCT_SAFE_RELEASE(m_image);
-
-        if (m_rtv)
-        {
-            m_rtv->release();
-            m_rtv = nullptr;
-        }
-
-        if (m_srv)
-        {
-            m_srv->release();
-            m_srv = nullptr;
-        }
         removeTextureViewId(this);
 
         m_width = width;
@@ -165,15 +188,9 @@ namespace FCT
         m_image->format(currentFormat);
         m_image->samples(currentSamples);
         m_image->usage(currentUsage);
+        m_image->setRenderbuffer(m_isRenderbuffer);
         m_image->create();
 
-        if (currentUsage & ImageUsage::Texture && !m_srv)
-        {
-            m_srv = m_ctx->createResource<RHI::TextureView>();
-            m_srv->image(m_image);
-            m_srv->create();
-            assignNewTextureViewId(this);
-        }
         as(currentUsage);
     }
 
@@ -196,7 +213,7 @@ namespace FCT
 
     RHI::DepthStencilView* SingleBufferImage::currentDepthStencilView()
     {
-        return nullptr;
+        return m_dsv;
     }
 
     RHI::Image* SingleBufferImage::currentImage()
@@ -207,5 +224,18 @@ namespace FCT
     size_t SingleBufferImage::textureViewHash() const
     {
         return lookupTextureViewId(this, m_srv);
+    }
+
+    bool SingleBufferImage::isRenderbuffer() const noexcept
+    {
+        return m_image ? m_image->isRenderbuffer() : m_isRenderbuffer;
+    }
+
+    void SingleBufferImage::setIsRenderbuffer(bool renderbuffer) noexcept
+    {
+        m_isRenderbuffer = renderbuffer;
+        if (m_image) {
+            m_image->setRenderbuffer(renderbuffer);
+        }
     }
 }

@@ -50,6 +50,7 @@ namespace FCT
         void invokeFileDropCallbacks(const std::vector<std::string>& filePaths);
 
         void createPlatform() override;
+        void destroyPlatform() override;
         bool isRunning() const override;
         void setVisible(bool visible) override;
         void swapBuffers() override;
@@ -61,6 +62,11 @@ namespace FCT
 
         HWND getHwnd() const { return m_hwnd; }
         HINSTANCE getHInstance() const { return m_hInstance; }
+
+#ifdef FCT_USE_VULKAN
+        VkSurfaceKHR getVkSurface() const { return m_vkSurface; }
+        void setVkSurface(VkSurfaceKHR surface) { m_vkSurface = surface; }
+#endif
 
         void postUiTask(UITaskFunction task, void* param = nullptr, bool waited = true)
         {

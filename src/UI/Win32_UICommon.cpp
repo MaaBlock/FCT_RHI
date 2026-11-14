@@ -10,7 +10,7 @@ namespace FCT
         std::atomic<bool> inited{false};
         m_uiThread = std::thread([this, &inited]()
         {
-            tracy::SetThreadName("Win32 UI Thread");
+            FCT::SetThreadName("Win32 UI Thread");
             m_uiThreadId = std::this_thread::get_id();
             registerWindowClass();
             inited = true;

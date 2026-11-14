@@ -17,7 +17,13 @@ namespace FCT {
         ConstBuffer,
         TextureArray,
         RootSign,
-        ViewportState
+        ViewportState,
+        RayGenShader,
+        MissShader,
+        ClosestHitShader,
+        AnyHitShader,
+        IntersectionShader,
+        CallableShader
     };
     class IPipelineResource : public RefCount {
     public:

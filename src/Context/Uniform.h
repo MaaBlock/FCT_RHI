@@ -1,4 +1,6 @@
 #pragma once
+#ifndef FCT_CONTEXT_UNIFORM_H
+#define FCT_CONTEXT_UNIFORM_H
 
 #include <vector>
 #include <string>
@@ -236,9 +238,9 @@ namespace FCT
         case ConstType::ProjectionMatrix:
         case ConstType::MVPMatrix:
         case ConstType::Mat4:
-            return "float4x4";
+            return "row_major float4x4";
         case ConstType::Mat3:
-            return "float3x3";
+            return "row_major float3x3";
         case ConstType::Vec4:
             return "float4";
         case ConstType::Vec3:
@@ -613,3 +615,4 @@ namespace FCT
         bool m_dirty;
     };
 }
+#endif // FCT_CONTEXT_UNIFORM_H

@@ -80,6 +80,20 @@ namespace FCT
         m_ctx = nullptr;
     }
 
+    void Win32_Window::destroyPlatform()
+    {
+        if (m_hwnd && m_common)
+        {
+            HWND hwndToDestroy = m_hwnd;
+            m_hwnd = nullptr;
+            m_running = false;
+            m_common->sendUiTask([hwndToDestroy](void*)
+            {
+                SafeDestroyWindowHandle(hwndToDestroy);
+            });
+        }
+    }
+
     Win32_Window::~Win32_Window()
     {
         FCT_SAFE_RELEASE(m_swapchain);
@@ -95,16 +109,7 @@ namespace FCT
         }
 #endif
 
-        if (m_hwnd && m_common)
-        {
-            HWND hwndToDestroy = m_hwnd;
-            m_hwnd = nullptr;
-            m_running = false;
-            m_common->sendUiTask([hwndToDestroy](void*)
-            {
-                SafeDestroyWindowHandle(hwndToDestroy);
-            });
-        }
+        destroyPlatform();
     }
 
     SwapchainTargetWrapper* Win32_Window::getSwapchainTarget(Context* srcCtx)
@@ -125,16 +130,19 @@ namespace FCT
 #ifdef FCT_USE_VULKAN
         else if (auto* vkCtx = dynamic_cast<VK_Context*>(srcCtx))
         {
-            vk::Win32SurfaceCreateInfoKHR createInfo{};
-            createInfo.setHinstance(m_hInstance);
-            createInfo.setHwnd(m_hwnd);
-            try
+            if (!m_hwnd)
             {
-                m_vkSurface = static_cast<VkSurfaceKHR>(vkCtx->getVkInstance().createWin32SurfaceKHR(createInfo));
+                ferr << "Failed to create Win32 Vulkan surface: m_hwnd is null" << std::endl;
+                return nullptr;
             }
-            catch (const std::exception& e)
+            VkWin32SurfaceCreateInfoKHR createInfo{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
+            createInfo.hinstance = m_hInstance;
+            createInfo.hwnd = m_hwnd;
+            VkResult res = vkCreateWin32SurfaceKHR(static_cast<VkInstance>(vkCtx->getVkInstance()), &createInfo, nullptr, &m_vkSurface);
+            if (res != VK_SUCCESS)
             {
-                ferr << "Failed to create Win32 Vulkan surface: " << e.what() << std::endl;
+                ferr << "Failed to create Win32 Vulkan surface, result = " << static_cast<int>(res) << std::endl;
+                m_vkSurface = nullptr;
             }
             m_swapchainNativeHandle = &m_vkSurface;
             ret = new Win32_SwapchainTargetWrapper(m_swapchainNativeHandle);
@@ -149,7 +157,8 @@ namespace FCT
 
     void Win32_Window::createPlatform()
     {
-        m_common->postUiTask([this](void*)
+        std::atomic<bool> done{false};
+        m_common->sendUiTask([this, &done](void*)
         {
             int clientWidth = (m_width > 0 && m_width != CW_USEDEFAULT) ? m_width : 800;
             int clientHeight = (m_height > 0 && m_height != CW_USEDEFAULT) ? m_height : 600;
@@ -181,6 +190,7 @@ namespace FCT
             {
                 ferr << "Failed to create Win32 window, error = " << GetLastError() << std::endl;
                 m_running = false;
+                done.store(true, std::memory_order_release);
                 return;
             }
 
@@ -191,7 +201,13 @@ namespace FCT
                 UpdateWindow(m_hwnd);
             }
             m_running = true;
-        });
+            done.store(true, std::memory_order_release);
+        }, nullptr, true);
+
+        while (!done.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+        }
 
         if (m_behavior)
         {
@@ -346,7 +362,6 @@ namespace FCT
 
         case WM_CLOSE:
             m_running = false;
-            DestroyWindow(hWnd);
             return 0;
 
         case WM_DESTROY:

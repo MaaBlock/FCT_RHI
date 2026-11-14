@@ -1,5 +1,9 @@
 #include "../FCTAPI.h"
 #include "./VK_Device.h"
+#include "../RHI/VK_StorageBuffer.h"
+#include "../RHI/VK_TraditionalPipeline.h"
+#include "../RHI/VK_MeshShaderPipeline.h"
+#include "../RHI/VK_RayTracingPipeline.h"
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 namespace FCT
 {
@@ -12,7 +16,22 @@ namespace FCT
 
     RHI::RasterizationPipeline* VK_Context::createTraditionPipeline()
     {
-        return new RHI::VK_TraditionalPipeline(this);
+        return FCT_NEW(RHI::VK_TraditionalPipeline, this);
+    }
+
+    UniquePtr<RHI::Pipeline> VK_Context::createRhiPipeline(PipelineType type)
+    {
+        switch (type)
+        {
+        case PipelineType::Traditional:
+            return makeUnique<RHI::VK_TraditionalPipeline>(this);
+        case PipelineType::MeshShader:
+            return makeUnique<RHI::VK_MeshShaderPipeline>(this);
+        case PipelineType::RayTracing:
+            return makeUnique<RHI::VK_RayTracingPipeline>(this);
+        default:
+            return nullptr;
+        }
     }
 
     RHI::ConstBuffer* VK_Context::getEmptyConstBuffer(const ConstLayout& layout)
@@ -49,21 +68,43 @@ namespace FCT
         return m_emptySampler.get();
     }
 
-    VK_Context::~VK_Context()
+    void VK_Context::waitGpu()
     {
-        stopSubmitThread();
-        m_transferRunning.store(false, std::memory_order_release);
-        if (m_transferThread.joinable()) {
-            m_transferThread.join();
+        ZoneScopedN("VK_Context::waitGpu");
+        if (m_device) {
+            (void)m_device.waitIdle();
         }
-        FCT_SAFE_DELETE(m_renderGraph);
+    }
+
+    void VK_Context::cleanupGpuResources()
+    {
+        ZoneScopedN("VK_Context::cleanupGpuResources");
+        if (m_gpuCleanedUp.exchange(true, std::memory_order_acq_rel)) {
+            return;
+        }
+
+        // 刷新所有延迟释放队列
         flushAllDeferredReleases();
+
+        // 清理缓存的空常量缓冲区与采样器
         m_emptyConstBufferCache.clear();
         m_emptySampler.reset();
+
+        // 释放 RenderGraph、资源管理器、命令缓冲图与描述符池
+        FCT_SAFE_DELETE(m_renderGraph);
+        FCT_SAFE_DELETE(m_resourceManager);
         FCT_SAFE_DELETE(m_cmdGraph);
+        if (m_descriptorPool && m_device) {
+            auto* vkDescPool = static_cast<RHI::VK_DescriptorPool*>(m_descriptorPool);
+            if (vkDescPool->getPool()) {
+                m_device.destroyDescriptorPool(vkDescPool->getPool());
+                vkDescPool->getPool() = nullptr;
+            }
+        }
         FCT_SAFE_DELETE(m_descriptorPool);
+
+        // 释放 GPU 暂存缓冲与命令池
         if (m_device) {
-            m_device.waitIdle();
             if (m_syncStagingBuffer) {
                 m_device.destroyBuffer(m_syncStagingBuffer);
                 m_syncStagingBuffer = nullptr;
@@ -74,6 +115,7 @@ namespace FCT
             }
             if (!m_commandBuffers.empty()) {
                 m_device.freeCommandBuffers(m_commandPool, m_commandBuffers);
+                m_commandBuffers.clear();
             }
             if (m_commandPool) {
                 m_device.destroyCommandPool(m_commandPool);
@@ -83,7 +125,57 @@ namespace FCT
                 m_device.destroyCommandPool(m_transferCommandPool);
                 m_transferCommandPool = nullptr;
             }
+            if (m_asyncTransferCmdPool) {
+                m_device.destroyCommandPool(m_asyncTransferCmdPool);
+                m_asyncTransferCmdPool = nullptr;
+            }
+        }
+    }
+
+    void VK_Context::unbindWindow(Window* wnd)
+    {
+        ZoneScopedN("VK_Context::unbindWindow");
+        if (!wnd)
+        {
+            return;
+        }
+
+        // Step 4: 等待在途 GPU 命令完成
+        waitGpu();
+
+        // Step 5: 趁底层 HWND 仍然有效，按序销毁 Swapchain 与 VkSurfaceKHR
+        if (wnd->swapchain())
+        {
+            wnd->swapchain()->release();
+        }
+
+#ifdef FCT_USE_VULKAN
+        if (auto* win32Wnd = dynamic_cast<Win32_Window*>(wnd))
+        {
+            if (win32Wnd->getVkSurface() && getVkInstance())
+            {
+                getVkInstance().destroySurfaceKHR(win32Wnd->getVkSurface());
+                win32Wnd->setVkSurface(nullptr);
+            }
+        }
+#endif
+
+        wnd->setContext(nullptr);
+
+        auto it = std::find(m_bindWindows.begin(), m_bindWindows.end(), wnd);
+        if (it != m_bindWindows.end())
+        {
+            m_bindWindows.erase(it);
+        }
+        trigger(ContextEvent::WindowUnbound{wnd, this});
+    }
+
+    VK_Context::~VK_Context()
+    {
+        requestExit();
+        if (m_device) {
             m_device.destroy();
+            m_device = nullptr;
         }
     }
 
@@ -92,15 +184,71 @@ namespace FCT
         m_common = common;
         m_phyDevice = common->getPhysicalDevice();
 
-        vk::PhysicalDeviceDescriptorIndexingFeaturesEXT supportedDescriptorIndexingFeatures{};
-        vk::PhysicalDeviceFeatures2 deviceFeatures2{};
-        deviceFeatures2.pNext = &supportedDescriptorIndexingFeatures;
-        m_phyDevice.getFeatures2(&deviceFeatures2);
+        uint32_t apiVersion = m_phyDevice.getProperties().apiVersion;
+        if (apiVersion >= VK_API_VERSION_1_1) {
+            std::vector<vk::ExtensionProperties> availableExtensions = m_phyDevice.enumerateDeviceExtensionProperties();
+            auto hasExtension = [&availableExtensions](const char* name) {
+                for (const auto& ext : availableExtensions) {
+                    if (std::strcmp(ext.extensionName, name) == 0) {
+                        return true;
+                    }
+                }
+                return false;
+            };
 
-        m_bindlessSupported = supportedDescriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing &&
-                              supportedDescriptorIndexingFeatures.descriptorBindingVariableDescriptorCount &&
-                              supportedDescriptorIndexingFeatures.descriptorBindingPartiallyBound &&
-                              supportedDescriptorIndexingFeatures.runtimeDescriptorArray;
+            bool hasRtPipelineExt = hasExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+            bool hasAccelStructExt = hasExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+            bool hasDeferredHostExt = hasExtension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+
+            vk::PhysicalDeviceDescriptorIndexingFeaturesEXT supportedDescriptorIndexingFeatures{};
+            vk::PhysicalDeviceBufferDeviceAddressFeatures supportedBufferDeviceAddressFeatures{};
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR supportedRayTracingPipelineFeatures{};
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR supportedAccelerationStructureFeatures{};
+
+            vk::PhysicalDeviceFeatures2 deviceFeatures2{};
+            deviceFeatures2.pNext = &supportedDescriptorIndexingFeatures;
+            supportedDescriptorIndexingFeatures.pNext = &supportedBufferDeviceAddressFeatures;
+
+            if (hasRtPipelineExt && hasAccelStructExt) {
+                supportedBufferDeviceAddressFeatures.pNext = &supportedAccelerationStructureFeatures;
+                supportedAccelerationStructureFeatures.pNext = &supportedRayTracingPipelineFeatures;
+            }
+
+            m_phyDevice.getFeatures2(&deviceFeatures2);
+
+            m_bindlessSupported = supportedDescriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing &&
+                                  supportedDescriptorIndexingFeatures.descriptorBindingVariableDescriptorCount &&
+                                  supportedDescriptorIndexingFeatures.descriptorBindingPartiallyBound &&
+                                  supportedDescriptorIndexingFeatures.runtimeDescriptorArray &&
+                                  supportedDescriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind &&
+                                  supportedDescriptorIndexingFeatures.descriptorBindingStorageBufferUpdateAfterBind &&
+                                  supportedDescriptorIndexingFeatures.descriptorBindingUniformBufferUpdateAfterBind &&
+                                  supportedDescriptorIndexingFeatures.shaderStorageBufferArrayNonUniformIndexing;
+
+            m_bufferDeviceAddressSupported = (supportedBufferDeviceAddressFeatures.bufferDeviceAddress == VK_TRUE);
+
+            bool rtHardwareFeatures = (supportedRayTracingPipelineFeatures.rayTracingPipeline == VK_TRUE) &&
+                                      (supportedAccelerationStructureFeatures.accelerationStructure == VK_TRUE) &&
+                                      m_bufferDeviceAddressSupported;
+
+            m_accelerationStructureSupported = hasAccelStructExt && hasDeferredHostExt &&
+                                               (supportedAccelerationStructureFeatures.accelerationStructure == VK_TRUE) &&
+                                               m_bufferDeviceAddressSupported;
+
+            m_rayTracingSupported = hasRtPipelineExt && hasAccelStructExt && hasDeferredHostExt && rtHardwareFeatures;
+
+            if (m_rayTracingSupported) {
+                vk::PhysicalDeviceProperties2 props2{};
+                props2.pNext = &m_rtPipelineProperties;
+                m_rtPipelineProperties.pNext = &m_asProperties;
+                m_phyDevice.getProperties2(&props2);
+            }
+        } else {
+            m_bindlessSupported = false;
+            m_bufferDeviceAddressSupported = false;
+            m_rayTracingSupported = false;
+            m_accelerationStructureSupported = false;
+        }
     }
     uint32_t VK_Context::getGraphicsQueueFamily() const {
         return m_graphicsQueueFamilyIndex;
@@ -694,7 +842,7 @@ namespace FCT
     }
     void VK_Context::transferThreadLoop()
     {
-        tracy::SetThreadName("VK Async Transfer Thread");
+        FCT::SetThreadName("VK Async Transfer Thread");
         vk::CommandPoolCreateInfo poolInfo;
         poolInfo.setQueueFamilyIndex(m_transferQueueFamilyIndex)
                 .setFlags(vk::CommandPoolCreateFlagBits::eTransient |
@@ -958,35 +1106,136 @@ namespace FCT
         std::vector<const char*> deviceExtensions = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME
         };
+
+        auto addExtensionOnce = [&deviceExtensions](const char* ext) {
+            for (const char* existing : deviceExtensions) {
+                if (std::strcmp(existing, ext) == 0) {
+                    return;
+                }
+            }
+            deviceExtensions.push_back(ext);
+        };
         
         vk::PhysicalDeviceFeatures supportedFeatures = m_phyDevice.getFeatures();
         vk::PhysicalDeviceFeatures deviceFeatures;
         deviceFeatures.setSamplerAnisotropy(supportedFeatures.samplerAnisotropy);
         deviceFeatures.setMultiDrawIndirect(supportedFeatures.multiDrawIndirect);
         deviceFeatures.setDrawIndirectFirstInstance(supportedFeatures.drawIndirectFirstInstance);
+        deviceFeatures.setFillModeNonSolid(supportedFeatures.fillModeNonSolid);
+        deviceFeatures.setDepthClamp(supportedFeatures.depthClamp);
+        deviceFeatures.setWideLines(supportedFeatures.wideLines);
 
         vk::DeviceCreateInfo deviceCreateInfo;
         deviceCreateInfo.setQueueCreateInfos(queueCreateInfos)
-                        .setPEnabledExtensionNames(deviceExtensions)
                         .setPEnabledFeatures(&deviceFeatures);
 
         vk::PhysicalDeviceDescriptorIndexingFeaturesEXT descriptorIndexingFeatures{};
-        bool enableBindless = (flag & ContextCreateFlag::enableBindless) && m_bindlessSupported;
-        
-        if (enableBindless) {
-            deviceExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-            deviceCreateInfo.setPEnabledExtensionNames(deviceExtensions);
+        vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+        vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{};
+        vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures{};
 
-            descriptorIndexingFeatures.setPNext(nullptr); 
+        void* pNextChain = nullptr;
+
+        bool enableBindless = (flag & ContextCreateFlag::enableBindless) && m_bindlessSupported;
+        if (enableBindless) {
+            addExtensionOnce(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+
             descriptorIndexingFeatures.setShaderSampledImageArrayNonUniformIndexing(true);
             descriptorIndexingFeatures.setDescriptorBindingVariableDescriptorCount(true);
             descriptorIndexingFeatures.setDescriptorBindingPartiallyBound(true);
             descriptorIndexingFeatures.setRuntimeDescriptorArray(true);
-            
-            deviceCreateInfo.setPNext(&descriptorIndexingFeatures);
+            descriptorIndexingFeatures.setDescriptorBindingSampledImageUpdateAfterBind(true);
+            descriptorIndexingFeatures.setDescriptorBindingStorageBufferUpdateAfterBind(true);
+            descriptorIndexingFeatures.setDescriptorBindingUniformBufferUpdateAfterBind(true);
+            descriptorIndexingFeatures.setShaderStorageBufferArrayNonUniformIndexing(true);
+
+            descriptorIndexingFeatures.pNext = pNextChain;
+            pNextChain = &descriptorIndexingFeatures;
         }
 
-        m_device = m_phyDevice.createDevice(deviceCreateInfo);
+        bool enableRayTracing = (flag & ContextCreateFlag::enableRayTracing) && m_rayTracingSupported;
+
+        // Buffer Device Address 是 Bindless 与 Ray Tracing 的公共依赖
+        if (m_bufferDeviceAddressSupported && (enableBindless || enableRayTracing)) {
+            addExtensionOnce(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+            bufferDeviceAddressFeatures.setBufferDeviceAddress(true);
+
+            bufferDeviceAddressFeatures.pNext = pNextChain;
+            pNextChain = &bufferDeviceAddressFeatures;
+        }
+
+        // 链入光线追踪与加速结构特性与扩展
+        if (enableRayTracing) {
+            addExtensionOnce(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+            addExtensionOnce(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+            addExtensionOnce(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+
+            std::vector<vk::ExtensionProperties> availableExts = m_phyDevice.enumerateDeviceExtensionProperties();
+            for (const auto& ext : availableExts) {
+                if (std::strcmp(ext.extensionName, VK_KHR_SPIRV_1_4_EXTENSION_NAME) == 0) {
+                    addExtensionOnce(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+                    break;
+                }
+            }
+
+            accelerationStructureFeatures.setAccelerationStructure(true);
+            accelerationStructureFeatures.pNext = pNextChain;
+            pNextChain = &accelerationStructureFeatures;
+
+            rayTracingPipelineFeatures.setRayTracingPipeline(true);
+            rayTracingPipelineFeatures.pNext = pNextChain;
+            pNextChain = &rayTracingPipelineFeatures;
+        }
+
+        deviceCreateInfo.setPNext(pNextChain);
+        deviceCreateInfo.setPEnabledExtensionNames(deviceExtensions);
+
+        // 采用无异常 C API 创建逻辑设备并支持优雅降级回退
+        VkDevice rawDevice = VK_NULL_HANDLE;
+        VkResult res = VULKAN_HPP_DEFAULT_DISPATCHER.vkCreateDevice(
+            static_cast<VkPhysicalDevice>(m_phyDevice),
+            reinterpret_cast<const VkDeviceCreateInfo*>(&deviceCreateInfo),
+            nullptr,
+            &rawDevice);
+
+        if (res != VK_SUCCESS && enableRayTracing) {
+            ferr << "Warning: Failed to create device with ray tracing features (VkResult: " 
+                 << static_cast<int>(res) << "), falling back to rasterization only." << std::endl;
+            m_rayTracingSupported = false;
+            m_accelerationStructureSupported = false;
+
+            std::vector<const char*> fallbackExtensions;
+            for (const char* ext : deviceExtensions) {
+                if (std::strcmp(ext, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) != 0 &&
+                    std::strcmp(ext, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) != 0 &&
+                    std::strcmp(ext, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) != 0 &&
+                    std::strcmp(ext, VK_KHR_SPIRV_1_4_EXTENSION_NAME) != 0) {
+                    fallbackExtensions.push_back(ext);
+                }
+            }
+
+            void* fallbackPNext = nullptr;
+            if (enableBindless) {
+                descriptorIndexingFeatures.pNext = fallbackPNext;
+                fallbackPNext = &descriptorIndexingFeatures;
+            }
+            if (m_bufferDeviceAddressSupported && enableBindless) {
+                bufferDeviceAddressFeatures.pNext = fallbackPNext;
+                fallbackPNext = &bufferDeviceAddressFeatures;
+            }
+
+            deviceCreateInfo.setPNext(fallbackPNext);
+            deviceCreateInfo.setPEnabledExtensionNames(fallbackExtensions);
+
+            res = VULKAN_HPP_DEFAULT_DISPATCHER.vkCreateDevice(
+                static_cast<VkPhysicalDevice>(m_phyDevice),
+                reinterpret_cast<const VkDeviceCreateInfo*>(&deviceCreateInfo),
+                nullptr,
+                &rawDevice);
+        }
+
+        assert(res == VK_SUCCESS && "VK_Context::createPlatform: 逻辑设备创建失败");
+        m_device = rawDevice;
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_device);
 
         m_graphicsQueue = m_device.getQueue(m_graphicsQueueFamilyIndex, 0);
@@ -996,8 +1245,14 @@ namespace FCT
         createTransferCommandPool();
 
         m_bindlessSupported = enableBindless;
+        m_rayTracingSupported = enableRayTracing && (m_device != nullptr);
+        m_accelerationStructureSupported = enableRayTracing && (m_device != nullptr);
+
         if (!m_bindlessSupported && (flag & ContextCreateFlag::enableBindless)) {
             ferr << "Warning: Bindless requested but not supported by device." << std::endl;
+        }
+        if (!m_rayTracingSupported && (flag & ContextCreateFlag::enableRayTracing)) {
+            ferr << "Warning: Ray tracing requested but not supported by device." << std::endl;
         }
 
         m_transferRunning = true;
@@ -1014,8 +1269,11 @@ namespace FCT
             if ((typeFilter & (1 << i)) &&
                 (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
                 return i;
-                }
+            }
         }
+
+        assert(false && "VK_Context::findMemoryType: 未能找到满足要求的显存类型");
+        return 0;
     }
 
     vk::Instance VK_Context::getVkInstance() {
@@ -1047,5 +1305,25 @@ namespace FCT
 
         vk::PhysicalDeviceProperties properties = m_phyDevice.getProperties();
         return properties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu;
+    }
+
+    uint32_t VK_Context::getUniformBufferOffsetAlignment() const noexcept {
+        if (m_phyDevice) {
+            return static_cast<uint32_t>(m_phyDevice.getProperties().limits.minUniformBufferOffsetAlignment);
+        }
+        return 256;
+    }
+
+    uint32_t VK_Context::getMaxUniformBufferRange() const noexcept {
+        if (m_phyDevice) {
+            return static_cast<uint32_t>(m_phyDevice.getProperties().limits.maxUniformBufferRange);
+        }
+        return 65536;
+    }
+
+    RHI::StorageBuffer* VK_Context::createStorageBuffer(size_t size)
+    {
+        auto* buffer = FCT_NEW(RHI::VK_StorageBuffer, this, size);
+        return buffer;
     }
 }

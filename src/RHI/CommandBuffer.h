@@ -17,7 +17,10 @@ namespace FCT
     class Image;
     namespace RHI
     {
+        class Pipeline;
         class RasterizationPipeline;
+        struct StridedDeviceAddressRegion;
+        struct StridedDeviceAddressRegions;
         class Semaphore;
         class Fence;
         enum class CommandBufferLevel
@@ -66,7 +69,29 @@ namespace FCT
                 (void)drawCount;
                 (void)stride;
             }
-            virtual void bindPipieline(RasterizationPipeline* pipeline) = 0;
+            virtual void bindPipeline(Pipeline* pipeline) = 0;
+            [[deprecated("拼写错误，请升级使用 bindPipeline(Pipeline*)")]]
+            virtual void bindPipieline(RasterizationPipeline* pipeline)
+            {
+                bindPipeline(reinterpret_cast<Pipeline*>(pipeline));
+            }
+            virtual void traceRays(
+                const StridedDeviceAddressRegion* rayGen,
+                const StridedDeviceAddressRegion* miss,
+                const StridedDeviceAddressRegion* hitGroup,
+                const StridedDeviceAddressRegion* callable,
+                uint32_t width,
+                uint32_t height,
+                uint32_t depth = 1)
+            {
+                (void)rayGen; (void)miss; (void)hitGroup; (void)callable;
+                (void)width; (void)height; (void)depth;
+            }
+            virtual void traceRays(
+                const StridedDeviceAddressRegions& regions,
+                uint32_t width,
+                uint32_t height,
+                uint32_t depth = 1);
             virtual void end() = 0;
             virtual void submit() = 0;
             virtual void nextPass() = 0;

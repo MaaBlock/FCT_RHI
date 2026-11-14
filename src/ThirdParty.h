@@ -1,6 +1,7 @@
 #ifndef FCT_THRIDPARTY_HEADER
 #define FCT_THIRDPARTY_HEADER
 #include <FCT_Base.h>
+#include <FCT_Profiling.h>
 #define _USE_MATH_DEFINES
 //#define FCT_USE_GLAD
 #define FCT_USE_GLFW
@@ -17,7 +18,9 @@
 #ifdef _WIN32
 	#define FCT_WIN32
 	#define FCT_USE_D3D12
-	#define NOMINMAX
+	#ifndef NOMINMAX
+		#define NOMINMAX
+	#endif
 	#include <Windows.h>
 	#include <windowsx.h>
 	#include <shellapi.h>
@@ -39,6 +42,9 @@
 #endif
 
 #ifdef FCT_USE_GLFW
+#ifndef GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_NONE
+#endif
 #ifdef FCT_USE_VULKAN
 #define GLFW_INCLUDE_VULKAN
 #endif

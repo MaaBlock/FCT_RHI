@@ -24,6 +24,7 @@
 #include "../RHI/VK_RenderTargetView.h"
 #include "../RHI/VK_DepthStencilView.h"
 #include "../RHI/VK_TextureView.h"
+#include "../RHI/VK_StorageBuffer.h"
 #include "../RHI/VK_RasterizationState.h"
 #include "../RHI/VK_DepthStencilState.h"
 #include "../RHI/VK_BlendState.h"
@@ -178,5 +179,15 @@ namespace FCT
     DepthStencilState* VK_Device::newDepthStencilState()
     {
         return FCT_NEW(RHI::VK_DepthStencilState, m_ctx);
+    }
+
+    RHI::StorageBuffer* VK_Device::newRhiStorageBuffer()
+    {
+        return FCT_NEW(RHI::VK_StorageBuffer, m_ctx);
+    }
+
+    RHI::StorageBuffer* VK_Device::createStorageBuffer(size_t size)
+    {
+        return FCT_NEW(RHI::VK_StorageBuffer, m_ctx, size);
     }
 }

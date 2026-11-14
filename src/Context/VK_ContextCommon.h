@@ -7,6 +7,8 @@
 #ifndef FCT_VK_CONTEXTCOMMON_H
 #define FCT_VK_CONTEXTCOMMON_H
 namespace FCT {
+    inline vk::DebugUtilsMessengerEXT g_vkDebugMessenger{nullptr};
+
     class VK_ContextCommon {
     public:
         VK_ContextCommon(Runtime* runtime) {
@@ -38,12 +40,29 @@ namespace FCT {
                 m_layers.push_back("VK_LAYER_KHRONOS_validation");
             }
 #endif
+            const char* envLayers = std::getenv("VK_INSTANCE_LAYERS");
+            if (envLayers && std::strstr(envLayers, "VK_LAYER_KHRONOS_validation")) {
+                if (hasLayer("VK_LAYER_KHRONOS_validation") &&
+                    std::find_if(m_layers.begin(), m_layers.end(), [](const char* l){ return std::strcmp(l, "VK_LAYER_KHRONOS_validation") == 0; }) == m_layers.end()) {
+                    m_layers.push_back("VK_LAYER_KHRONOS_validation");
+                }
+            }
+            uint32_t apiVersion = VK_API_VERSION_1_0;
+            auto pfnEnumerate = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+                vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion"));
+            if (pfnEnumerate) {
+                uint32_t supportedApi = 0;
+                if (pfnEnumerate(&supportedApi) == VK_SUCCESS) {
+                    apiVersion = std::min(supportedApi, static_cast<uint32_t>(VK_API_VERSION_1_2));
+                }
+            }
+
             vk::ApplicationInfo appInfo;
             appInfo.setPApplicationName("Vulkan Application")
                    .setApplicationVersion(VK_MAKE_VERSION(1, 0, 0))
                    .setPEngineName("FCT")
                    .setEngineVersion(VK_MAKE_VERSION(1, 0, 0))
-                   .setApiVersion(VK_API_VERSION_1_2);
+                   .setApiVersion(apiVersion);
             std::vector<vk::ExtensionProperties> availableExtensions = vk::enumerateInstanceExtensionProperties();
             auto hasExtension = [&availableExtensions](const char* name) {
                 for (const auto& ext : availableExtensions) {
@@ -68,6 +87,13 @@ namespace FCT {
 #endif
                 VK_KHR_SURFACE_EXTENSION_NAME,
             };
+
+            bool enableDebugUtils = false;
+            if (hasExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+                extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+                enableDebugUtils = true;
+            }
+
             vk::InstanceCreateInfo createInfo;
 #ifdef FCT_DEBUG
             std::vector<vk::ValidationFeatureEnableEXT> enabledValidationFeatures;
@@ -85,6 +111,32 @@ namespace FCT {
             m_instance = vk::createInstance(createInfo);
             VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
 
+            if (enableDebugUtils) {
+                vk::DebugUtilsMessengerCreateInfoEXT debugInfo{};
+                debugInfo.setMessageSeverity(
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+                );
+                debugInfo.setMessageType(
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
+                );
+                debugInfo.setPfnUserCallback([](
+                    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                    VkDebugUtilsMessageTypeFlagsEXT messageType,
+                    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                    void* pUserData) -> VkBool32
+                {
+                    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+                        ferr << "[Vulkan Validation Error] " << (pCallbackData->pMessage ? pCallbackData->pMessage : "") << std::endl;
+                    } else if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+                        ferr << "[Vulkan Validation Warning] " << (pCallbackData->pMessage ? pCallbackData->pMessage : "") << std::endl;
+                    }
+                    return VK_FALSE;
+                });
+                g_vkDebugMessenger = m_instance.createDebugUtilsMessengerEXT(debugInfo);
+            }
 
             m_physicalDevices =  m_instance.enumeratePhysicalDevices();
             for (auto it : m_physicalDevices){
@@ -98,6 +150,10 @@ namespace FCT {
         }
 
         void term() {
+            if (g_vkDebugMessenger) {
+                m_instance.destroyDebugUtilsMessengerEXT(g_vkDebugMessenger);
+                g_vkDebugMessenger = nullptr;
+            }
             m_instance.destroy();
         }
         VK_Context* createContext() {

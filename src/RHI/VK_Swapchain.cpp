@@ -24,7 +24,7 @@ namespace FCT {
         }
 
         VK_Swapchain::~VK_Swapchain() {
-
+            destroy();
         }
         void VK_Swapchain::cleanupOldResources() {
             if (m_fctImages.size()) {
@@ -189,7 +189,23 @@ namespace FCT {
         }
 
         void VK_Swapchain::destroy() {
-
+            cleanupOldResources();
+            if (m_target) {
+                m_target->release();
+                m_target = nullptr;
+            }
+            if (m_depthStencilImage) {
+                m_depthStencilImage->release();
+                m_depthStencilImage = nullptr;
+            }
+            if (m_fctImage) {
+                m_fctImage->release();
+                m_fctImage = nullptr;
+            }
+            if (m_swapchain && m_ctx && m_ctx->getDevice()) {
+                m_ctx->getDevice().destroySwapchainKHR(m_swapchain);
+                m_swapchain = nullptr;
+            }
         }
 
 

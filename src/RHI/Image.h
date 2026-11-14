@@ -88,8 +88,12 @@ namespace FCT
             }
             virtual void updateData(const void* data, size_t dataSize) = 0;
             virtual void updateData(const void* data, size_t dataSize, Fence* fence, std::function<void()>* onCompletion) = 0;
+            virtual void updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t arrayLayer, uint32_t mipLevel, const void* pixelData, size_t rowPitch = 0) = 0;
             
             virtual void uploadAsync(std::vector<uint8_t> data, std::function<void()> callback) {} // Default empty
+
+            virtual bool isRenderbuffer() const noexcept { return false; }
+            virtual void setRenderbuffer(bool renderbuffer) noexcept { (void)renderbuffer; }
 
         protected:
             Format m_format;

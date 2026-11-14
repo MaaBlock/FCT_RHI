@@ -26,6 +26,8 @@ namespace FCT
             void scissor(Vec2 lt, Vec2 rb) override;
             void draw(size_t vertexStart, size_t instanceStart, size_t vertexSize, size_t instanceCount) override;
             void drawIndex(size_t indexStart, size_t instanceStart, size_t indexCount, size_t instanceCount, size_t firstVertex = 0) override;
+            void bindPipeline(Pipeline* pipeline) override;
+            [[deprecated("Use bindPipeline instead")]]
             void bindPipieline(RasterizationPipeline* pipeline) override;
             void end() override;
             void submit() override;

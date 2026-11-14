@@ -35,6 +35,7 @@ namespace FCT
         void updateData(const void* data, size_t dataSize) override;
         void updateData(const void* data, size_t dataSize, RHI::Fence* fence, std::function<void()>* onCompletion) override;
         void uploadAsync(std::vector<uint8_t> data, std::function<void()> callback) override;
+        void updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t arrayLayer, uint32_t mipLevel, const void* pixelData, size_t rowPitch = 0) override;
 
         Image* getImage() const override { return const_cast<SingleBufferImage*>(this); }
         std::vector<Image*> getTargetImages() override;
@@ -44,9 +45,13 @@ namespace FCT
         RHI::DepthStencilView* currentDepthStencilView() override;
         RHI::Image* currentImage() override;
         size_t textureViewHash() const override;
+
+        bool isRenderbuffer() const noexcept override;
+        void setIsRenderbuffer(bool renderbuffer) noexcept override;
     protected:
         RHI::Image* m_image;
         RHI::RenderTargetView* m_rtv;
+        RHI::DepthStencilView* m_dsv = nullptr;
         RHI::TextureView* m_srv;
         ImageInitData m_initData;
         ImageUsages m_usage;

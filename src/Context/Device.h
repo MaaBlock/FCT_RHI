@@ -40,6 +40,8 @@ namespace FCT {
         class RenderTargetView;
         class DepthStencilView;
         class TextureView;
+        class StorageBuffer;
+        class TransformFeedback;
         struct TraditionalPipeline
         {
 
@@ -85,6 +87,9 @@ namespace FCT {
         virtual RHI::RenderTargetView* newRhiRenderTargetView() = 0;
         virtual RHI::DepthStencilView* newRhiDepthStencilView() = 0;
         virtual RHI::TextureView* newRhiTextureView() = 0;
+        virtual RHI::StorageBuffer* newRhiStorageBuffer() { return nullptr; }
+        virtual RHI::StorageBuffer* createStorageBuffer(size_t size = 0) { (void)size; return nullptr; }
+        virtual RHI::TransformFeedback* newRhiTransformFeedback() { return nullptr; }
         virtual RasterizationState* newRasterizationState() = 0;
         virtual DepthStencilState* newDepthStencilState() = 0;
         virtual BlendState* newBlendState() = 0;
@@ -139,6 +144,10 @@ namespace FCT {
                 return newRhiDepthStencilView();
             else if constexpr (std::is_same_v<T, RHI::TextureView>)
                 return newRhiTextureView();
+            else if constexpr (std::is_same_v<T, RHI::StorageBuffer>)
+                return newRhiStorageBuffer();
+            else if constexpr (std::is_same_v<T, RHI::TransformFeedback>)
+                return newRhiTransformFeedback();
             else if constexpr (std::is_same_v<T, RasterizationState>)
                 return newRasterizationState();
             else if constexpr (std::is_same_v<T, DepthStencilState>)

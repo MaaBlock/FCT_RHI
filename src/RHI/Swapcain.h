@@ -60,6 +60,8 @@ namespace FCT
             {
                 m_dstWidth = width;
                 m_dstHeight = height;
+                m_pendingWidth = width;
+                m_pendingHeight = height;
             }
 
             /**

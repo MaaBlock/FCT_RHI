@@ -12,9 +12,13 @@
 #include "Format.h"
 #include "../RHI/ImageUsageFlags.h"
 #include "../Base/FractionScale2D.h"
+#include "ResourceGroup.h"
+#include "../MutilThreadBase/UniquePtr.h"
+
 namespace FCT
 {
     class Image;
+    class Buffer;
     class MutilBufferImage;
     class SingleBufferImage;
     class Context;
@@ -23,14 +27,7 @@ namespace FCT
     {
         class Swapchain;
     }
-    /**
-     * @code
-     * allocateImage(Dependcy)
-     * Image* depth = allocateImage(wnd);
-     * Image* depth = allocateImage(target);
-     *
-     * @endcode
-     */
+
     std::string WindowToToken(Window* wnd);
     std::string SwapchainToToken(RHI::Swapchain* swapchain);
     struct ImageDesc
@@ -71,7 +68,7 @@ namespace FCT
     {
         constexpr const char* ImageGraph_ChangeIndex = "ImageGraph_ChangeIndex";
     }
-    class  ResourceManager {
+    class ResourceManager {
     public:
         ResourceManager(Context* ctx);
         /**
@@ -94,9 +91,6 @@ namespace FCT
         Image* allocateImage(std::string name,std::string dependency,ImageDesc desc);
         void clearImage(std::string name);
     private:
-        /*todo: updateGraph 修改了 m_needChangeIndexImages 而 change index 发生在submit 线程
-         *      要是运行时 allocateImage怎么办？怎么做线程同步?
-        */
         void updateGraph();
         void addvanceFrame();
         void registerWindow(Window* wnd);
@@ -108,30 +102,20 @@ namespace FCT
         Device* m_resourceDevice;
         Context* m_context;
         FlowControl* m_flowControl;
+        std::unordered_map<std::string, UniquePtr<ResourceGroup>> m_resourceGroups;
     public:
-        //todo:todo函数
-        /**
-         * @cond CHINESE
-         * @brief 挂起resize一个image
-         * @param name
-         * @param width
-         * @param height
-         * @endcond
-         */
         void resizeImage(std::string name, int width, int height);
-        /**
-         * @cond CHINESE
-         * @brief 分配的是独立的Target,例如窗口一类的就算为独立Target
-         * @param name
-         * @return
-         * @endcond
-         */
         Image* allocateTarget(std::string name,TargetDesc desc);
         Image* registerExternalTarget(std::string name, Image* externalImg);
+        Image* require(const std::string& groupName, const ResourceRequireDesc& desc);
+        Buffer* requireBuffer(const std::string& groupName, const BufferRequireDesc& desc);
+        ResourceGroup* getOrCreateResourceGroup(const std::string& groupName);
+        ResourceGroup* getResourceGroup(const std::string& groupName) const;
+        void releaseGroupResource(const std::string& groupName, const std::string& resourceId);
+        void releaseGroupBuffer(const std::string& groupName, const std::string& resourceId);
+        std::vector<ResourceGroup*> getAllResourceGroups() const;
     };
 
 }
-
-
 
 #endif //RESOURCEMANAGER_H

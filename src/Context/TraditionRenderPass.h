@@ -70,7 +70,7 @@ public:
         for (auto& job : m_submitQueue->m_traditionRenderJobs)
         {
             auto pipeline = getOrCreateTraditionPipeline(job->state);
-            cmdBuf->bindPipieline(pipeline);
+            cmdBuf->bindPipeline(pipeline);
             job->resource->bind(cmdBuf,pipeline);
             job->submit(cmdBuf);
         }
@@ -91,7 +91,8 @@ public:
         pipeline->addResources(state->rasterizationState);
         pipeline->addResources(state->depthStencilState);
         pipeline->bindPass(m_pass);
-        pipeline->create();
+        auto status = pipeline->create();
+        assert(status.ok() && "管线创建失败");
         m_pipelineStates[state] = pipeline;
         return pipeline;
     }

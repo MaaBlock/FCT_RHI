@@ -45,6 +45,8 @@ namespace FCT
                 m_commandBuffer.setViewport(0,1, &viewport);
             }
             void scissor(Vec2 lt, Vec2 rb) override;
+            void bindPipeline(Pipeline* pipeline) override;
+            [[deprecated("Use bindPipeline instead")]]
             void bindPipieline(RasterizationPipeline* pipeline) override;
             void draw(size_t vertexBegin, size_t instanceBegin, size_t vertexSize, size_t instanceSize) override
             {
@@ -72,6 +74,19 @@ namespace FCT
                 m_commandBuffer.drawIndexedIndirect(vkBuf, static_cast<vk::DeviceSize>(byteOffset), drawCount, stride);
             }
             void barrier(FCT::Image* image, ImageLayout oldLayout, ImageLayout newLayout, PipelineStages srcStage, PipelineStages dstStage, AccessFlags srcAccess, AccessFlags dstAccess, ImageAspects aspectMask) override;
+            void traceRays(
+                const StridedDeviceAddressRegion* rayGen,
+                const StridedDeviceAddressRegion* miss,
+                const StridedDeviceAddressRegion* hitGroup,
+                const StridedDeviceAddressRegion* callable,
+                uint32_t width,
+                uint32_t height,
+                uint32_t depth = 1) override;
+            void traceRays(
+                const StridedDeviceAddressRegions& regions,
+                uint32_t width,
+                uint32_t height,
+                uint32_t depth = 1) override;
         protected:
             VK_CommandPool* m_pool;
             vk::CommandBufferAllocateInfo m_allocateInfo;

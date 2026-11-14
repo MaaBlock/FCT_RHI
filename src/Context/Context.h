@@ -43,11 +43,19 @@ namespace FCT
 	class RasterizationState;
 
 	class BlendState;
+	class TraditionalPipeline;
+	class MeshShaderPipeline;
+	class RayTracingPipeline;
+	enum class PipelineType : uint8_t;
 	namespace RHI
 	{
+		class Pipeline;
+		class RasterizationPipeline;
 		class TextureView;
 		class ConstBuffer;
 		class IndexBuffer;
+		class StorageBuffer;
+		class TransformFeedback;
 	}
     class Sampler;
 
@@ -92,9 +100,12 @@ namespace FCT
 		withModuleRenderGraph		             = 1 << 1,
         withAutoMaxFrameInFlight                 = 1 << 2,
 		enableBindless                           = 1 << 3,
+		enableRayTracing                         = 1 << 4,
 		defaultConfig = withModuleResourceManage
 						| withModuleRenderGraph
-                        | withAutoMaxFrameInFlight,
+                        | withAutoMaxFrameInFlight
+                        | enableBindless
+                        | enableRayTracing,
 	};
 	FCT_DECLARE_FLAGS(ContextCreateFlag)
 	class Context : public RefCount,public IEventSystem<EventSystemConfig::TriggerOnly>
@@ -107,7 +118,16 @@ namespace FCT
 		virtual void createPlatform(ContextCreateFlags flag) = 0;
 	public:
         virtual bool isIntegrateGpu() = 0;
-        virtual bool isBindlessSupported() const = 0;
+        virtual bool isRayTracingSupported() const noexcept = 0;
+        virtual bool isMeshShaderSupported() const noexcept = 0;
+        virtual bool isComputeSupported() const noexcept = 0;
+        virtual bool isBindlessSupported() const noexcept = 0;
+        virtual bool isReadWriteStorageBufferSupported() const noexcept = 0;
+        virtual bool isIndirectDrawSupported() const noexcept = 0;
+        virtual bool isBaseInstanceSupported() const noexcept = 0;
+        virtual uint32_t getUniformBufferOffsetAlignment() const noexcept = 0;
+        virtual uint32_t getMaxUniformBufferRange() const noexcept = 0;
+        virtual bool isAccelerationStructureSupported() const noexcept { return isRayTracingSupported(); }
 		PipeHub& pipeHub();
 		/** @name 初始化与配置 (Initialization & Configuration)
    		*  @{
@@ -127,8 +147,15 @@ namespace FCT
 		// tools
 		template <typename T>
 		T* createResource();
+		virtual TraditionalPipeline* createTraditionalPipeline();
+		virtual MeshShaderPipeline* createMeshShaderPipeline();
+		virtual RayTracingPipeline* createRayTracingPipeline();
+		virtual UniquePtr<RHI::Pipeline> createRhiPipeline(PipelineType type);
+		[[deprecated("请迁移至 createTraditionalPipeline()")]]
 		virtual RHI::RasterizationPipeline* createTraditionPipeline() = 0;
-		        virtual RHI::ConstBuffer* getEmptyConstBuffer(const ConstLayout& layout) = 0;
+		virtual RHI::StorageBuffer* createStorageBuffer(size_t size = 0);
+		virtual RHI::TransformFeedback* createTransformFeedback();
+		virtual RHI::ConstBuffer* getEmptyConstBuffer(const ConstLayout& layout) = 0;
         virtual Sampler* getEmptySampler() = 0;
 		StaticMesh<uint32_t>* createMesh(const ModelMesh* modelMesh, const VertexLayout& layout);
 		StaticMesh<uint32_t>* loadMesh(const std::string& filename,const std::string& meshName, const VertexLayout& layout);
@@ -165,6 +192,7 @@ namespace FCT
 		 * 运行阶段 不允许修改 或 拆分flush函数，在wait currentFlush和nextFrame之间修改
 		 */
 		auto& submitTickers() { return m_flowControl->submitTickers(); }
+		FlowControl* getFlowControl() const noexcept { return m_flowControl; }
 		void flush();
         void _consumeLogicTask()
         {
@@ -197,6 +225,7 @@ namespace FCT
 			m_bindWindows.push_back(wnd);
 			trigger(ContextEvent::WindowBound{wnd, this});
 		}
+		virtual void unbindWindow(Window* wnd);
 		/** @} */
 	public:
 		void submitThread();
@@ -214,6 +243,14 @@ namespace FCT
 				m_submitThread.join();
 			}
 		}
+		/** @name 退出与资源销毁 (Shutdown & Resource Cleanup)
+		 *  @{
+		 */
+		/// @brief 请求退出流程：先跳出主提交/渲染循环，然后等待 GPU 完成所有在飞任务，最后清理 GPU 资源
+		void requestExit();
+		virtual void waitGpu();
+		virtual void cleanupGpuResources();
+		/** @} */
 		/** @name 着色器编译 (Shader Compilation)
   		  *  @{
   		  */
@@ -250,15 +287,15 @@ namespace FCT
 		/** @} */
 	protected:
 		// 模块组件
-		FlowControl* m_flowControl;
-		Device* m_resourceDevice;
-		ModelLoader* m_modelLoader;
-		RenderGraph* m_renderGraph;
-		ImageLoader* m_imageLoader;
-		ResourceManager* m_resourceManager;
-		ShaderCompiler* m_compiler;
-		ShaderGenerator* m_generator;
-		CommandBufferGraph* m_cmdGraph;
+		FlowControl* m_flowControl = nullptr;
+		Device* m_resourceDevice = nullptr;
+		ModelLoader* m_modelLoader = nullptr;
+		RenderGraph* m_renderGraph = nullptr;
+		ImageLoader* m_imageLoader = nullptr;
+		ResourceManager* m_resourceManager = nullptr;
+		ShaderCompiler* m_compiler = nullptr;
+		ShaderGenerator* m_generator = nullptr;
+		CommandBufferGraph* m_cmdGraph = nullptr;
 	protected:
 		/*
 		TokenGraph<std::string, SubmitTicker>& m_submitTickers;
@@ -270,16 +307,18 @@ namespace FCT
 		std::atomic<bool> m_currentFlush{true};
 		std::thread m_submitThread;
 		std::atomic<bool> m_ctxRunning{true};
+		std::atomic<bool> m_exitRequested{false};
+		std::atomic<bool> m_gpuCleanedUp{false};
 	protected:
 		std::thread m_transferThread;
-		std::atomic<bool> m_transferRunning;
+		std::atomic<bool> m_transferRunning{false};
 		
 		virtual void transferThreadLoop() {}
 
 	protected:
 		uint32_t m_maxFrameInFlight{3};
 		//std::map<Window*, RHI::DescriptorPool*> m_descriptorPools;
-		RHI::DescriptorPool* m_descriptorPool;
+		RHI::DescriptorPool* m_descriptorPool = nullptr;
 		size_t m_frameIndex = 0;//submit帧index 区别在于是 swapBuffer更改的，而m_submitFrameIndex和m_logicFrameIndex都是在同步时候更改的
 		size_t m_logicFrameIndex = 0; //逻辑帧index
 		size_t m_submitFrameIndex = 0;//submit帧index

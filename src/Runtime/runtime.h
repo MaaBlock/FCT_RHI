@@ -27,11 +27,13 @@
 namespace FCT
 {
     class Win32_Window;
+    class WGL2_Context;
 
     enum class ContextBackend
     {
         Vulkan,
         D3D12,
+        WGL2,
     };
 
     enum class WindowBackend
@@ -42,18 +44,18 @@ namespace FCT
 
     struct RuntimeCommon {
 #ifdef FCT_USE_VULKAN
-        VK_ContextCommon* vkContextCommon;
+        VK_ContextCommon* vkContextCommon = nullptr;
 #endif
 #ifdef FCT_USE_D3D12
-        D3D12_ContextCommon* d3d12ContextCommon;
+        D3D12_ContextCommon* d3d12ContextCommon = nullptr;
 #endif
 #ifdef FCT_USE_GLFW
-    	GLFW_UICommon* glfwUICommon;
+    	GLFW_UICommon* glfwUICommon = nullptr;
 #endif
 #ifdef FCT_WIN32
-        Win32_UICommon* win32UICommon;
+        Win32_UICommon* win32UICommon = nullptr;
 #endif
-    	Freetype_FontCommon* freetypeFontCommon;
+    	Freetype_FontCommon* freetypeFontCommon = nullptr;
     };
 	/*
 	 *todo:
@@ -86,23 +88,40 @@ namespace FCT
         	g_common->freetypeFontCommon = FCT_NEW(Freetype_FontCommon);
         	g_common->freetypeFontCommon->init();
         }
-        ~Runtime() {
+        virtual ~Runtime() {
+            if (g_common) {
 #ifdef  FCT_USE_D3D12
-            g_common->d3d12ContextCommon->term();
-            FCT_DELETE(g_common->d3d12ContextCommon);
+                if (g_common->d3d12ContextCommon) {
+                    g_common->d3d12ContextCommon->term();
+                    FCT_DELETE(g_common->d3d12ContextCommon);
+                    g_common->d3d12ContextCommon = nullptr;
+                }
 #endif
 #ifdef  FCT_USE_VULKAN
-            g_common->vkContextCommon->term();
+                if (g_common->vkContextCommon) {
+                    g_common->vkContextCommon->term();
+                    g_common->vkContextCommon = nullptr;
+                }
 #endif
-        	g_common->freetypeFontCommon->tern();
-        	FCT_DELETE(g_common->freetypeFontCommon);
+                if (g_common->freetypeFontCommon) {
+                    g_common->freetypeFontCommon->tern();
+                    FCT_DELETE(g_common->freetypeFontCommon);
+                    g_common->freetypeFontCommon = nullptr;
+                }
 #ifdef  FCT_WIN32
-            FCT_DELETE(g_common->win32UICommon);
+                if (g_common->win32UICommon) {
+                    FCT_DELETE(g_common->win32UICommon);
+                    g_common->win32UICommon = nullptr;
+                }
 #endif
 #ifdef  FCT_USE_GLFW
-        	FCT_DELETE(g_common->glfwUICommon);
+                if (g_common->glfwUICommon) {
+                    FCT_DELETE(g_common->glfwUICommon);
+                    g_common->glfwUICommon = nullptr;
+                }
 #endif
-        	term();
+                term();
+            }
         }
         void init();
         void term();
@@ -142,6 +161,7 @@ namespace FCT
 #ifdef FCT_USE_D3D12
         D3D12_Context* createD3D12Context();
 #endif
+        WGL2_Context* createWGL2Context();
     	ImageLoader* createImageLoader();
     	ModelLoader* createModelLoader();
     	Freetype_Font* createFont()
@@ -159,7 +179,7 @@ namespace FCT
     	PipeHub& pipeHub();
     private:
     	PipeHub m_pipeHub;
-        RuntimeCommon* g_common;
+        RuntimeCommon* g_common = nullptr;
     	Runtime(const Runtime&) = delete;
     	Runtime& operator=(const Runtime&) = delete;
     };

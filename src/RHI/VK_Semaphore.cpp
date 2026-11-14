@@ -19,7 +19,10 @@ namespace FCT {
 
         void VK_Semaphore::create()
         {
-            addRef();
+            if (count() == 0)
+            {
+                addRef();
+            }
             if (m_semaphore)
             {
                 m_ctx->device().destroySemaphore(m_semaphore);

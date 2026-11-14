@@ -3,7 +3,7 @@
 
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
-#include "../../../FCT_Base/ThirdParty/tracy/profiler/src/stb_image.h"
+#include "../../../FCT_Profiling/ThirdParty/tracy/profiler/src/stb_image.h"
 
 namespace FCT {
 

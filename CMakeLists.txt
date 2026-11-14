@@ -303,11 +303,19 @@ add_library(FCT STATIC
     ${PATH_MODULE_HEADERS}
     ${PATH_MODULE_SOURCES}
 )
-target_sources(FCT PRIVATE
-        ${CONTEXT_SHARDEC_MODULE_SOURCES}
-)
+option(FCT_ENABLE_RUNTIME_SHADERC "Enable runtime libshaderc compilation support (default ON; turn OFF for Wasm/minigame to strip ~15MB binary size)" ON)
+
+if(FCT_ENABLE_RUNTIME_SHADERC)
+    target_sources(FCT PRIVATE
+            ${CONTEXT_SHARDEC_MODULE_SOURCES}
+    )
+    target_compile_definitions(FCT PUBLIC FCT_ENABLE_RUNTIME_SHADERC=1)
+else()
+    target_compile_definitions(FCT PUBLIC FCT_ENABLE_RUNTIME_SHADERC=0)
+endif()
 
 if (FCT_WIN32)
+    find_package(Vulkan REQUIRED)
     target_sources(FCT PRIVATE
         ${RUNTIME_WIN32_MODULE_SOURCES}
         ${UI_WIN32_MODULE_SOURCES}
@@ -321,6 +329,7 @@ if (FCT_WIN32)
         dxgi
         dxguid
         d3dcompiler
+        Vulkan::Vulkan
     )
 endif()
 
@@ -386,21 +395,34 @@ find_package(Freetype REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
 
-find_package(unofficial-shaderc CONFIG REQUIRED)
+if(FCT_ENABLE_RUNTIME_SHADERC)
+    find_package(unofficial-shaderc CONFIG REQUIRED)
+    set(FCT_SHADERC_LIB unofficial::shaderc::shaderc)
+else()
+    set(FCT_SHADERC_LIB)
+endif()
+
 find_package(spirv_cross_core CONFIG REQUIRED)
 find_package(spirv_cross_glsl CONFIG REQUIRED)
 find_package(spirv_cross_hlsl CONFIG REQUIRED)
+find_package(spirv_cross_msl CONFIG REQUIRED)
 find_package(spirv_cross_cpp CONFIG REQUIRED)
 find_package(spirv_cross_reflect CONFIG REQUIRED)
+find_package(spirv_cross_util CONFIG REQUIRED)
+find_package(spirv_cross_c CONFIG REQUIRED)
 target_link_libraries(FCT PUBLIC
         FCT_Base
+        FCT_Profiling
         work_contract
         spirv-cross-core
         spirv-cross-glsl
         spirv-cross-hlsl
+        spirv-cross-msl
         spirv-cross-cpp
         spirv-cross-reflect
-        unofficial::shaderc::shaderc
+        spirv-cross-util
+        spirv-cross-c
+        ${FCT_SHADERC_LIB}
         assimp::assimp
         Freetype::Freetype
         Boost::system
@@ -485,6 +507,9 @@ function(target_link_fct_libraries target_name)
     if(COMMAND target_link_fct_base_libraries)
         target_link_fct_base_libraries(${target_name})
     endif()
+    if(COMMAND target_link_fct_profiling_libraries)
+        target_link_fct_profiling_libraries(${target_name})
+    endif()
 
     if (FCT_ANDROID)
         target_link_libraries(${target_name}
@@ -500,10 +525,95 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.16")
     )
 endif()
 
-#target_link_libraries(FCT PUBLIC
-#    harfbuzz::harfbuzz
-#    harfbuzz::harfbuzz-subset
-#    Freetype::Freetype
-#    ${Boost_LIBRARIES}
-#    ${BULLET_LIBRARIES}
-#)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M1_Tests.cpp")
+    add_executable(FCT_M1_Tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M1_Tests.cpp")
+    target_link_fct_libraries(FCT_M1_Tests)
+    target_include_directories(FCT_M1_Tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    set_utf8_for_target(FCT_M1_Tests)
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(FCT_M1_Tests Vulkan::Vulkan)
+    elseif(Vulkan_FOUND)
+        target_link_libraries(FCT_M1_Tests ${Vulkan_LIBRARIES})
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M1_Challenger2_Tests.cpp")
+    add_executable(FCT_M1_Challenger2_Tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M1_Challenger2_Tests.cpp")
+    target_link_fct_libraries(FCT_M1_Challenger2_Tests)
+    target_include_directories(FCT_M1_Challenger2_Tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    set_utf8_for_target(FCT_M1_Challenger2_Tests)
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(FCT_M1_Challenger2_Tests Vulkan::Vulkan)
+    elseif(Vulkan_FOUND)
+        target_link_libraries(FCT_M1_Challenger2_Tests ${Vulkan_LIBRARIES})
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M2_Tests.cpp")
+    add_executable(FCT_M2_Tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M2_Tests.cpp")
+    target_link_fct_libraries(FCT_M2_Tests)
+    target_link_libraries(FCT_M2_Tests FCT_SAI FCT_Compute FCT_WebJS)
+    if(WIN32)
+        target_link_libraries(FCT_M2_Tests dwrite)
+    endif()
+    target_include_directories(FCT_M2_Tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_SAI/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_Compute/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_WebJS/src"
+    )
+    if(MSVC)
+        target_compile_options(FCT_M2_Tests PRIVATE /EHsc)
+    endif()
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(FCT_M2_Tests Vulkan::Vulkan)
+    elseif(Vulkan_FOUND)
+        target_link_libraries(FCT_M2_Tests ${Vulkan_LIBRARIES})
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M2_Challenger1_Tests.cpp")
+    add_executable(FCT_M2_Challenger1_Tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M2_Challenger1_Tests.cpp")
+    target_link_fct_libraries(FCT_M2_Challenger1_Tests)
+    target_link_libraries(FCT_M2_Challenger1_Tests FCT_SAI FCT_Compute FCT_WebJS)
+    if(WIN32)
+        target_link_libraries(FCT_M2_Challenger1_Tests dwrite)
+    endif()
+    target_include_directories(FCT_M2_Challenger1_Tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_SAI/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_Compute/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_WebJS/src"
+    )
+    if(MSVC)
+        target_compile_options(FCT_M2_Challenger1_Tests PRIVATE /EHsc)
+    endif()
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(FCT_M2_Challenger1_Tests Vulkan::Vulkan)
+    elseif(Vulkan_FOUND)
+        target_link_libraries(FCT_M2_Challenger1_Tests ${Vulkan_LIBRARIES})
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M2_Challenger2_Tests.cpp")
+    add_executable(FCT_M2_Challenger2_Tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/FCT_M2_Challenger2_Tests.cpp")
+    target_link_fct_libraries(FCT_M2_Challenger2_Tests)
+    target_link_libraries(FCT_M2_Challenger2_Tests FCT_SAI FCT_Compute FCT_WebJS)
+    if(WIN32)
+        target_link_libraries(FCT_M2_Challenger2_Tests dwrite)
+    endif()
+    target_include_directories(FCT_M2_Challenger2_Tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_SAI/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_Compute/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FCT_WebJS/src"
+    )
+    if(MSVC)
+        target_compile_options(FCT_M2_Challenger2_Tests PRIVATE /EHsc)
+    endif()
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(FCT_M2_Challenger2_Tests Vulkan::Vulkan)
+    elseif(Vulkan_FOUND)
+        target_link_libraries(FCT_M2_Challenger2_Tests ${Vulkan_LIBRARIES})
+    endif()
+endif()

@@ -219,6 +219,103 @@ namespace FCT
             }
         }
 
+        void D3D12_Image::updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                                          uint32_t arrayLayer, uint32_t mipLevel,
+                                          const void* pixelData, size_t rowPitch)
+        {
+            if (!m_resource || !pixelData || width == 0 || height == 0) return;
+            size_t pixelSize = FormatSize(m_format);
+            if (pixelSize == 0) pixelSize = 4;
+            size_t actualPitch = (rowPitch > 0) ? rowPitch : (width * pixelSize);
+            size_t alignedPitch = (actualPitch + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
+            size_t totalBytes = alignedPitch * height;
+
+            D3D12_HEAP_PROPERTIES uploadHeap = {};
+            uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+            D3D12_RESOURCE_DESC bufferDesc = {};
+            bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+            bufferDesc.Width = totalBytes;
+            bufferDesc.Height = 1;
+            bufferDesc.DepthOrArraySize = 1;
+            bufferDesc.MipLevels = 1;
+            bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+            bufferDesc.SampleDesc.Count = 1;
+            bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+            Microsoft::WRL::ComPtr<ID3D12Resource> stagingBuffer;
+            HRESULT hr = m_ctx->getDevice()->CreateCommittedResource(
+                &uploadHeap,
+                D3D12_HEAP_FLAG_NONE,
+                &bufferDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&stagingBuffer));
+            if (FAILED(hr)) return;
+
+            uint8_t* mappedPtr = nullptr;
+            D3D12_RANGE readRange = {0, 0};
+            hr = stagingBuffer->Map(0, &readRange, reinterpret_cast<void**>(&mappedPtr));
+            if (FAILED(hr)) return;
+
+            const uint8_t* srcBytes = reinterpret_cast<const uint8_t*>(pixelData);
+            for (uint32_t row = 0; row < height; ++row) {
+                std::memcpy(mappedPtr + row * alignedPitch, srcBytes + row * actualPitch, actualPitch);
+            }
+            stagingBuffer->Unmap(0, nullptr);
+
+            Microsoft::WRL::ComPtr<ID3D12CommandAllocator> cmdAlloc;
+            m_ctx->getDevice()->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmdAlloc));
+            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList;
+            m_ctx->getDevice()->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmdAlloc.Get(), nullptr, IID_PPV_ARGS(&cmdList));
+
+            UINT subresource = mipLevel + arrayLayer;
+            if (m_currentState != D3D12_RESOURCE_STATE_COPY_DEST) {
+                D3D12_RESOURCE_BARRIER b = {};
+                b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                b.Transition.pResource = m_resource.Get();
+                b.Transition.StateBefore = m_currentState;
+                b.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+                b.Transition.Subresource = subresource;
+                cmdList->ResourceBarrier(1, &b);
+            }
+
+            D3D12_TEXTURE_COPY_LOCATION dst = {};
+            dst.pResource = m_resource.Get();
+            dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            dst.SubresourceIndex = subresource;
+
+            D3D12_TEXTURE_COPY_LOCATION src = {};
+            src.pResource = stagingBuffer.Get();
+            src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            src.PlacedFootprint.Offset = 0;
+            src.PlacedFootprint.Footprint.Format = resolveResourceFormat();
+            src.PlacedFootprint.Footprint.Width = width;
+            src.PlacedFootprint.Footprint.Height = height;
+            src.PlacedFootprint.Footprint.Depth = 1;
+            src.PlacedFootprint.Footprint.RowPitch = static_cast<UINT>(alignedPitch);
+
+            D3D12_BOX srcBox = {0, 0, 0, width, height, 1};
+            cmdList->CopyTextureRegion(&dst, x, y, 0, &src, &srcBox);
+
+            D3D12_RESOURCE_STATES finalState = (m_usage & ImageUsage::RenderTarget) ? D3D12_RESOURCE_STATE_PRESENT : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            if (finalState != D3D12_RESOURCE_STATE_COPY_DEST) {
+                D3D12_RESOURCE_BARRIER b = {};
+                b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                b.Transition.pResource = m_resource.Get();
+                b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+                b.Transition.StateAfter = finalState;
+                b.Transition.Subresource = dst.SubresourceIndex;
+                cmdList->ResourceBarrier(1, &b);
+            }
+            m_currentState = finalState;
+
+            cmdList->Close();
+            ID3D12CommandList* lists[] = {cmdList.Get()};
+            m_ctx->getGraphicsQueue()->ExecuteCommandLists(1, lists);
+            m_ctx->waitGpu();
+        }
+
         void D3D12_Image::uploadAsync(std::vector<uint8_t> data, std::function<void()> callback)
         {
             if (m_resource && !data.empty())

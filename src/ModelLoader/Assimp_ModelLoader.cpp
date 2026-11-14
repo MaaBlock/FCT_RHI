@@ -211,7 +211,9 @@ namespace FCT
         ZoneScoped();
         ZoneText(path.c_str(), path.size());
         Assimp::Importer importer;
+        importer.SetPropertyFloat(AI_CONFIG_PP_GSN_MAX_SMOOTHING_ANGLE, 60.0f);
         const auto aiScene = importer.ReadFile(path,
+            aiProcess_GenSmoothNormals |
             aiProcess_CalcTangentSpace |
             aiProcess_Triangulate |
             aiProcess_JoinIdenticalVertices |
@@ -335,7 +337,9 @@ namespace FCT
         ModelInfo::SceneInfo info;
 
         Assimp::Importer importer;
+        importer.SetPropertyFloat(AI_CONFIG_PP_GSN_MAX_SMOOTHING_ANGLE, 60.0f);
         const auto aiScene = importer.ReadFile(path,
+            aiProcess_GenSmoothNormals |
             aiProcess_CalcTangentSpace |
             aiProcess_Triangulate |
             aiProcess_JoinIdenticalVertices |

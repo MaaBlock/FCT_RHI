@@ -19,6 +19,7 @@ namespace FCT
                 m_stride = 0;
                 m_updateFrequency = UpdateFrequency::Static;
             }
+            virtual ~VertexBuffer() = default;
             void vertexBuffer(FCT::VertexBuffer* vertexBuffer)
             {
                 m_vertexBuffer = vertexBuffer;

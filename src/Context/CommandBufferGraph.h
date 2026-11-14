@@ -1,4 +1,4 @@
-﻿#ifndef COMMANDBUFFERGRAPH_H
+#ifndef COMMANDBUFFERGRAPH_H
 #define COMMANDBUFFERGRAPH_H
 #include "../RHI/CommandBuffer.h"
 #include "../RHI/CommandPool.h"
@@ -43,6 +43,7 @@ namespace FCT
         {
         public:
             InputFromWindow(SemaphorePool* semaphorePool) : EdgeBase(semaphorePool) {}
+            ~InputFromWindow() override;
 
             void setSourceNode(CommandBufferNodes::InputFromWindow* source) {
                 m_sourceNode = source;
@@ -76,6 +77,7 @@ namespace FCT
         public:
             OutputToWindow(FencePool* fencePool,SemaphorePool* semaphorePool) : EdgeBase(semaphorePool),
                 m_fencePool(fencePool) {}
+            ~OutputToWindow() override;
             void setSourceNode(CommandBufferNodes::CommandBuffer* source) {
                 m_sourceNode = source;
             }
@@ -327,6 +329,7 @@ namespace FCT
 
     public:
         CommandBufferGraph(Device* device);
+        ~CommandBufferGraph();
         struct NodeRef {
             enum Type {
                 WindowType,

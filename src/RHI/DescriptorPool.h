@@ -11,6 +11,7 @@ namespace FCT
         class DescriptorPool
         {
         public:
+            virtual ~DescriptorPool() = default;
             virtual void create() = 0;
         protected:
 

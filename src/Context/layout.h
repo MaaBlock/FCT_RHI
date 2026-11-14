@@ -273,6 +273,8 @@ namespace FCT {
          * @endcond
          */
         void end();
+        FCT::RHI::RasterizationPipeline* getCurrentPipeline();
+        FCT::PassResource* getCurrentPassResource();
 
         /** @} */
 
@@ -440,10 +442,6 @@ namespace FCT {
         template<typename... Args>
         void proccessArgs(DisableInjectPassResource disable, Args... args);
         void proccessArgs();
-
-        // --- 内部资源获取 ---
-        FCT::PassResource* getCurrentPassResource();
-        FCT::RHI::RasterizationPipeline* getCurrentPipeline();
 
         // --- 内部绑定与分配 ---
         void bindVertexShader(FCT::VertexShader* shader);

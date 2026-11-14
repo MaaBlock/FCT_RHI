@@ -20,6 +20,20 @@ namespace FCT {
             return shaderc_tess_control_shader;
         case ShaderKind::MeshShader:
             return shaderc_mesh_shader;
+        case ShaderKind::TaskShader:
+            return shaderc_task_shader;
+        case ShaderKind::RayGenShader:
+            return shaderc_raygen_shader;
+        case ShaderKind::MissShader:
+            return shaderc_miss_shader;
+        case ShaderKind::ClosestHitShader:
+            return shaderc_closesthit_shader;
+        case ShaderKind::AnyHitShader:
+            return shaderc_anyhit_shader;
+        case ShaderKind::IntersectionShader:
+            return shaderc_intersection_shader;
+        case ShaderKind::CallableShader:
+            return shaderc_callable_shader;
         }
         return shaderc_vertex_shader;
     }

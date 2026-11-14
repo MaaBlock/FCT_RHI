@@ -12,6 +12,8 @@ namespace FCT {
             VK_ConstBuffer(VK_Context* ctx);
             ~VK_ConstBuffer() override;
             void mapData() override;
+            void upload(const void* data, size_t size) override;
+            void upload(const void* data, size_t size, size_t offset) override;
             void checkAndUpdateCurrentFrame();
             const vk::DescriptorBufferInfo& currentBufferInfo();
 

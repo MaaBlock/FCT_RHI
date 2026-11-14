@@ -1,4 +1,4 @@
-﻿#include "../RHI/ConstBuffer.h"
+#include "../RHI/ConstBuffer.h"
 #include "UniformWrapper.h"
 #include "Context.h"
 #include "Context.hpp"
@@ -57,6 +57,7 @@ namespace FCT {
 
     void Uniform::update()
     {
+        if (m_uniformBuffer && m_constBuffer) { m_constBuffer->upload(m_uniformBuffer->getData(), m_uniformBuffer->getSize()); }
         m_constBuffer->updataData();
     }
 

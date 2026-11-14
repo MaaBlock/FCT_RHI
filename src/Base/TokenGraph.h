@@ -200,7 +200,7 @@ namespace FCT {
             }
 
             for (const auto& predecessor : it->second.predecessors) {
-                removeEdge(predecessor, token, false);
+                removeEdge(token, predecessor, false);
             }
             for (const auto& successor : it->second.successors) {
                 removeEdge(token, successor, true);
@@ -213,10 +213,18 @@ namespace FCT {
 
             m_nodeMap.erase(it);
 
-            if (!isZeroRefVertex(token)) {
-                return;
+            if (isZeroRefVertex(token)) {
+                removeVertex(token);
             }
-            removeVertex(token);
+            // 移除节点后立刻刷新缓存序列，避免已卸载模块的 Value 拷贝滞留到析构期引发 UAF
+            (void)update();
+        }
+
+        void clear() {
+            m_graph.clear();
+            m_tokenToVertex.clear();
+            m_nodeMap.clear();
+            m_order.clear();
         }
 
         void updateNode(const NodeInfo& info) {

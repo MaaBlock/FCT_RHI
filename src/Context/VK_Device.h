@@ -33,6 +33,8 @@ namespace FCT {
         RHI::DescriptorPool* newRhiDescriptorPool() override;
         RHI::DepthStencilView* newRhiDepthStencilView() override;
         RHI::TextureView* newRhiTextureView() override;
+        RHI::StorageBuffer* newRhiStorageBuffer() override;
+        RHI::StorageBuffer* createStorageBuffer(size_t size = 0) override;
         BlendState* newBlendState() override;
         Sampler* newSampler() override;
         PassResource* newPassResource() override;

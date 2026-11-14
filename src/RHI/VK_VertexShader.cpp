@@ -32,6 +32,10 @@ namespace FCT
 
         void VK_VertexShader::createShaderModule()
         {
+            if (m_code.empty()) {
+                ferr << "[VK_VertexShader] 着色器字节码为空，跳过创建 VkShaderModule" << std::endl;
+                return;
+            }
             vk::ShaderModuleCreateInfo createInfo{};
             createInfo.codeSize = m_code.size();
             createInfo.pCode = reinterpret_cast<const uint32_t*>(m_code.data());

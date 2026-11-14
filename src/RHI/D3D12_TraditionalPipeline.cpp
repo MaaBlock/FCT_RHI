@@ -473,7 +473,7 @@ namespace FCT
             }
         }
 
-        void D3D12_TraditionalPipeline::create()
+        Status D3D12_TraditionalPipeline::create()
         {
             m_pipelineState.Reset();
             m_rootSignature.Reset();
@@ -481,6 +481,7 @@ namespace FCT
             generateDefaultResources();
             createRootSignature();
             createPipelineState();
+            return OkStatus();
         }
 
         void D3D12_TraditionalPipeline::bind(D3D12_CommandBuffer* cmdBuf)

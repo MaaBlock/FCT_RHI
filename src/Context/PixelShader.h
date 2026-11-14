@@ -66,6 +66,8 @@ namespace FCT {
         {
             m_resourceLayout = layout;
         }
+        const std::string& userSource() const { return m_userSource; }
+        const std::string& source() const { return m_source; }
     protected:
         void generateDefaultCode()
         {

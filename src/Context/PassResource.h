@@ -11,6 +11,7 @@ namespace FCT
     class Sampler;
     class SamplerElement;
     class TextureElement;
+    class Image;
     class Window;
 
     namespace RHI

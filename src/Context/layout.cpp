@@ -124,10 +124,7 @@ namespace FCT
             m_fixedImages.erase(it);
         }
 
-        auto nameIt = m_textureNames.find(name);
-        if (nameIt != m_textureNames.end()) {
-            m_textureNames.erase(nameIt);
-        }
+        // Note: 保留 m_textureNames 中的字符串池生命周期，避免 ShaderGenerator 缓存的 const char* 在重编译时悬垂
         clearShaderCache();
         clearPipelineCache();
         clearPassResourceCache();
@@ -178,9 +175,11 @@ namespace FCT
                      {
                          for (auto& texture : m_textureFromPass)
                          {
+                             auto [nameIt, _] = m_textureNames.emplace(texture.first, nullptr);
+                             nameIt->second = nameIt->first.c_str();
                              FCT::TextureElement element(
                                  TextureType::Texture2D,
-                                 texture.first.c_str(),
+                                 nameIt->second,
                                  getAllAfterTheStage(info.textureSlot[texture.first]),
                                  FCT::UpdateFrequency::PerFrame);
                              addTextureSlot(element);
@@ -541,7 +540,10 @@ namespace FCT
                 ret->bindPass(m_pass);
             }
 
-            ret->create();
+            Status st = ret->create();
+            if (!st.ok()) {
+                ferr << "[Layout] 管线创建失败: " << st.message() << std::endl;
+            }
             return ret;
         });
     }

@@ -35,10 +35,19 @@ namespace FCT
     public:
         explicit D3D12_Context(D3D12_ContextCommon* common);
         ~D3D12_Context() override;
+        void waitGpu() override;
 
         void createPlatform(ContextCreateFlags flag) override;
         bool isIntegrateGpu() override;
-        bool isBindlessSupported() const override { return true; }
+        bool isRayTracingSupported() const noexcept override { return false; }
+        bool isMeshShaderSupported() const noexcept override { return false; }
+        bool isComputeSupported() const noexcept override { return true; }
+        bool isBindlessSupported() const noexcept override { return true; }
+        bool isReadWriteStorageBufferSupported() const noexcept override { return true; }
+        bool isIndirectDrawSupported() const noexcept override { return true; }
+        bool isBaseInstanceSupported() const noexcept override { return true; }
+        uint32_t getUniformBufferOffsetAlignment() const noexcept override { return 256; }
+        uint32_t getMaxUniformBufferRange() const noexcept override { return 65536; }
 
         RHI::RasterizationPipeline* createTraditionPipeline() override;
         RHI::ConstBuffer* getEmptyConstBuffer(const ConstLayout& layout) override;

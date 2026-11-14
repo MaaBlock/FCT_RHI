@@ -82,8 +82,12 @@ namespace FCT {
             m_behavior->size(w, h);
         }
         virtual void createPlatform() = 0;
+        virtual void destroyPlatform() {}
+        void destroy();
 		void create(WindowCreateFlags flags = WindowCreateFlag::defaultConfig);
         void bind(Context* ctx) override;
+        void setContext(Context* ctx) { m_ctx = ctx; }
+        Context* getContext() const { return m_ctx; }
         virtual bool isRunning() const = 0;
         bool isVisible() const { return m_visible; }
         virtual void setVisible(bool visible) { m_visible = visible; }

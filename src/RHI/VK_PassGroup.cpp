@@ -55,30 +55,28 @@ namespace FCT
             m_createInfo.pAttachments = m_attachments.data();
 
             std::vector<vk::SubpassDependency> dependencies;
-            /*
             bool hasDepthStencil = !m_depthAttachments.empty();
 
             vk::SubpassDependency dependency{};
             dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
             dependency.dstSubpass = 0;
 
+            dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+            dependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
             if (hasDepthStencil) {
-                dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
-                                          vk::PipelineStageFlagBits::eEarlyFragmentTests;
-            } else {
-                dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+                dependency.srcStageMask |= vk::PipelineStageFlagBits::eEarlyFragmentTests |
+                                           vk::PipelineStageFlagBits::eLateFragmentTests;
+                dependency.srcAccessMask |= vk::AccessFlagBits::eDepthStencilAttachmentWrite;
             }
 
-            dependency.srcAccessMask = vk::AccessFlags();
-
+            dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+            dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead |
+                                       vk::AccessFlagBits::eColorAttachmentWrite;
             if (hasDepthStencil) {
-                dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
-                                          vk::PipelineStageFlagBits::eEarlyFragmentTests;
-                dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite |
-                                           vk::AccessFlagBits::eDepthStencilAttachmentWrite;
-            } else {
-                dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-                dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+                dependency.dstStageMask |= vk::PipelineStageFlagBits::eEarlyFragmentTests |
+                                           vk::PipelineStageFlagBits::eLateFragmentTests;
+                dependency.dstAccessMask |= vk::AccessFlagBits::eDepthStencilAttachmentRead |
+                                            vk::AccessFlagBits::eDepthStencilAttachmentWrite;
             }
 
             dependencies.push_back(dependency);
@@ -87,18 +85,29 @@ namespace FCT
             outDependency.srcSubpass = 0;
             outDependency.dstSubpass = VK_SUBPASS_EXTERNAL;
 
+            outDependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+            outDependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
             if (hasDepthStencil) {
-                outDependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
-                                             vk::PipelineStageFlagBits::eLateFragmentTests;
-                outDependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite |
-                                              vk::AccessFlagBits::eDepthStencilAttachmentWrite;
-            } else {
-                outDependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-                outDependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+                outDependency.srcStageMask |= vk::PipelineStageFlagBits::eEarlyFragmentTests |
+                                              vk::PipelineStageFlagBits::eLateFragmentTests;
+                outDependency.srcAccessMask |= vk::AccessFlagBits::eDepthStencilAttachmentWrite;
             }
 
-            outDependency.dstStageMask = vk::PipelineStageFlagBits::eBottomOfPipe;
-            outDependency.dstAccessMask = vk::AccessFlagBits::eMemoryRead;
+            outDependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                                         vk::PipelineStageFlagBits::eFragmentShader |
+                                         vk::PipelineStageFlagBits::eTransfer |
+                                         vk::PipelineStageFlagBits::eBottomOfPipe;
+            outDependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead |
+                                          vk::AccessFlagBits::eColorAttachmentWrite |
+                                          vk::AccessFlagBits::eShaderRead |
+                                          vk::AccessFlagBits::eTransferRead |
+                                          vk::AccessFlagBits::eMemoryRead;
+            if (hasDepthStencil) {
+                outDependency.dstStageMask |= vk::PipelineStageFlagBits::eEarlyFragmentTests |
+                                              vk::PipelineStageFlagBits::eLateFragmentTests;
+                outDependency.dstAccessMask |= vk::AccessFlagBits::eDepthStencilAttachmentRead |
+                                               vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+            }
             dependencies.push_back(outDependency);
 
             if (m_subpasses.size() > 1) {
@@ -125,7 +134,7 @@ namespace FCT
 
                     dependencies.push_back(subpassDependency);
                 }
-            }*/
+            }
             for (auto desc : m_passDescs)
             {
                 for (auto pre : desc.predecessors)
@@ -146,11 +155,11 @@ namespace FCT
             m_createInfo.pSubpasses = m_subpasses.data();
             m_createInfo.subpassCount = m_subpasses.size();
 
-            try {
-                m_renderPass = m_ctx->device().createRenderPass(m_createInfo);
-            } catch (const std::exception& e) {
-                ferr << "Failed to create render pass: " << e.what() << std::endl;
-                throw;
+            vk::Result res = m_ctx->device().createRenderPass(&m_createInfo, nullptr, &m_renderPass);
+            if (res != vk::Result::eSuccess) {
+                ferr << "Failed to create render pass: " << vk::to_string(res) << std::endl;
+                assert(res == vk::Result::eSuccess && "Failed to create render pass");
+                return;
             }
 
             m_beginInfo.renderPass = m_renderPass;
@@ -193,26 +202,26 @@ namespace FCT
             m_framebufferInfo.layers = 1;
             m_framebufferInfo.renderPass = m_renderPass;
 
-            try {
-                vk::Framebuffer cachedFb = nullptr;
-                for (const auto& entry : m_framebufferCache)
+            vk::Framebuffer cachedFb = nullptr;
+            for (const auto& entry : m_framebufferCache)
+            {
+                if (entry.width == width && entry.height == height && entry.views == m_framebufferViews)
                 {
-                    if (entry.width == width && entry.height == height && entry.views == m_framebufferViews)
-                    {
-                        cachedFb = entry.framebuffer;
-                        break;
-                    }
+                    cachedFb = entry.framebuffer;
+                    break;
                 }
-                if (!cachedFb)
-                {
-                    cachedFb = m_ctx->device().createFramebuffer(m_framebufferInfo);
-                    m_framebufferCache.push_back(CachedFramebuffer{m_framebufferViews, width, height, cachedFb});
-                }
-                m_framebuffers[cmdBuf] = cachedFb;
-            } catch (const std::exception& e) {
-                ferr << "Failed to create framebuffer: " << e.what() << std::endl;
-                throw;
             }
+            if (!cachedFb)
+            {
+                vk::Result res = m_ctx->device().createFramebuffer(&m_framebufferInfo, nullptr, &cachedFb);
+                if (res != vk::Result::eSuccess) {
+                    ferr << "Failed to create framebuffer: " << vk::to_string(res) << std::endl;
+                    assert(res == vk::Result::eSuccess && "Failed to create framebuffer");
+                    return;
+                }
+                m_framebufferCache.push_back(CachedFramebuffer{m_framebufferViews, width, height, cachedFb});
+            }
+            m_framebuffers[cmdBuf] = cachedFb;
 
             m_beginInfo.framebuffer = m_framebuffers[cmdBuf];
             m_beginInfo.renderArea.offset.setX(0).setY(0);

@@ -4,8 +4,16 @@
 
 #ifndef FCT_FENCEPOOL_H
 #define FCT_FENCEPOOL_H
+
+#include <functional>
+
 namespace FCT
 {
+    namespace RHI
+    {
+        class Fence;
+    }
+
     class FencePool
     {
     public:

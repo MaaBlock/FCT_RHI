@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/4/7.
 //
 #ifndef SHADERGENERATE_H
@@ -23,6 +23,13 @@ namespace FCT
         GeometryShader,
         TessControlShader,
         MeshShader,
-      };
+        TaskShader,
+        RayGenShader,
+        MissShader,
+        ClosestHitShader,
+        AnyHitShader,
+        IntersectionShader,
+        CallableShader,
+    };
 }
 #endif //SHADERGENERATE_H

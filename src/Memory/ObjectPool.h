@@ -129,6 +129,19 @@ namespace FCT
             m_freeIndices.push_back(index);
         }
 
+        template<typename U>
+        void tryBindPoolDeleter(FCT::DeletableTrait<U>* trait, size_t index)
+        {
+            trait->setDeleter([this, index](U* basePtr)
+            {
+                recycleSlot(static_cast<T*>(basePtr), index);
+            });
+        }
+
+        void tryBindPoolDeleter(void*, size_t) noexcept
+        {
+        }
+
         T* addSingleLocked()
         {
             T* ret = nullptr;
@@ -150,14 +163,7 @@ namespace FCT
                 }, m_constructorArgs);
             }
 
-            if constexpr (FCT::IsDeletableTrait<T>::value)
-            {
-                const size_t index = m_size;
-                ret->setDeleter([this, index](T* ptr)
-                {
-                    recycleSlot(ptr, index);
-                });
-            }
+            tryBindPoolDeleter(ret, m_size);
             ++m_size;
             return ret;
         }

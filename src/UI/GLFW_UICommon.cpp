@@ -10,7 +10,7 @@ namespace FCT
         bool inited = false;
         m_uiThread = std::thread([this,&inited]()
         {
-            tracy::SetThreadName("GLFW UI Thread");
+            FCT::SetThreadName("GLFW UI Thread");
             m_uiThreadId = std::this_thread::get_id();
             glfwInit();
             glfwSwapInterval(0);

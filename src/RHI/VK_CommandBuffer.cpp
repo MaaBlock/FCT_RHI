@@ -3,6 +3,8 @@
 //
 
 #include "../FCTAPI.h"
+#include "RasterizationPipeline.h"
+#include "RayTracingPipeline.h"
 namespace FCT
 {
     namespace RHI
@@ -52,17 +54,17 @@ namespace FCT
             m_commandBuffer.setScissor(0,1, &scissor);
         }
 
+        void VK_CommandBuffer::bindPipeline(Pipeline* pipeline)
+        {
+            if (pipeline)
+            {
+                pipeline->bind(this);
+            }
+        }
+
         void VK_CommandBuffer::bindPipieline(RasterizationPipeline* pipeline)
         {
-            switch (pipeline->getType())
-            {
-            case PipelineType::Traditional:
-                {
-                    auto vkPipeline = static_cast<VK_TraditionalPipeline*>(pipeline);
-                    m_commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,vkPipeline->pipeline());
-                }
-                break;
-            }
+            bindPipeline(static_cast<Pipeline*>(pipeline));
         }
 
 
@@ -87,8 +89,8 @@ namespace FCT
             }
             submitInfo.setSignalSemaphores(signalSemaphores);
 
-            m_pool->context()->getGraphicsQueue().submit(submitInfo,
-                static_cast<VK_Fence*>(m_fence)->fence());
+            vk::Fence fence = m_fence ? static_cast<VK_Fence*>(m_fence)->fence() : vk::Fence{};
+            m_pool->context()->getGraphicsQueue().submit(submitInfo, fence);
         }
 
         void VK_CommandBuffer::barrier(FCT::Image* image, ImageLayout oldLayout, ImageLayout newLayout,
@@ -132,6 +134,54 @@ namespace FCT
             std::vector<vk::ImageMemoryBarrier> barriers{barrier};
             m_commandBuffer.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlags(),
                 0, nullptr, 0, nullptr, 1, barriers.data());
+        }
+
+        void VK_CommandBuffer::traceRays(
+            const StridedDeviceAddressRegion* rayGen,
+            const StridedDeviceAddressRegion* miss,
+            const StridedDeviceAddressRegion* hitGroup,
+            const StridedDeviceAddressRegion* callable,
+            uint32_t width,
+            uint32_t height,
+            uint32_t depth)
+        {
+            if (!VULKAN_HPP_DEFAULT_DISPATCHER.vkCmdTraceRaysKHR || !m_commandBuffer)
+            {
+                return;
+            }
+
+            auto toVkRegion = [](const StridedDeviceAddressRegion* r) -> VkStridedDeviceAddressRegionKHR
+            {
+                if (!r || r->deviceAddress == 0 || r->size == 0)
+                {
+                    return VkStridedDeviceAddressRegionKHR{ 0, 0, 0 };
+                }
+                return VkStridedDeviceAddressRegionKHR{ r->deviceAddress, r->stride, r->size };
+            };
+
+            VkStridedDeviceAddressRegionKHR vkRayGen = toVkRegion(rayGen);
+            VkStridedDeviceAddressRegionKHR vkMiss = toVkRegion(miss);
+            VkStridedDeviceAddressRegionKHR vkHitGroup = toVkRegion(hitGroup);
+            VkStridedDeviceAddressRegionKHR vkCallable = toVkRegion(callable);
+
+            VULKAN_HPP_DEFAULT_DISPATCHER.vkCmdTraceRaysKHR(
+                static_cast<VkCommandBuffer>(m_commandBuffer),
+                &vkRayGen,
+                &vkMiss,
+                &vkHitGroup,
+                &vkCallable,
+                width,
+                height,
+                depth);
+        }
+
+        void VK_CommandBuffer::traceRays(
+            const StridedDeviceAddressRegions& regions,
+            uint32_t width,
+            uint32_t height,
+            uint32_t depth)
+        {
+            traceRays(&regions.rayGen, &regions.miss, &regions.hitGroup, &regions.callable, width, height, depth);
         }
     }
 }

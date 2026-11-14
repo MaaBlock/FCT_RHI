@@ -17,6 +17,8 @@ namespace FCT
 
             void mapData() override;
             void create() override;
+            void upload(const void* data, size_t size) override;
+            void upload(const void* data, size_t size, size_t offset) override;
 
             D3D12_CPU_DESCRIPTOR_HANDLE getCpuHandle(uint32_t frameIdx) const;
             D3D12_GPU_VIRTUAL_ADDRESS getGpuVirtualAddress(uint32_t frameIdx) const;
@@ -31,6 +33,7 @@ namespace FCT
             std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> m_cpuHandles;
             std::vector<uint32_t> m_descriptorIndices;
             size_t m_alignedSize;
+            FCT::UniformBuffer* m_buffer = nullptr;
         };
     }
 }

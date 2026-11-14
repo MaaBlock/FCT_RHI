@@ -39,6 +39,7 @@ namespace FCT
     }
 }
 #include "./Image.h"
+#include "./TransientResourcePool.h"
 #include "./RenderGraph_EnablePassClear.h"
 #include "./RenderGraph_TextureSize.h"
 #include "./RenderGraph_Texture.h"
@@ -60,12 +61,48 @@ namespace FCT
     public:
         RenderGraphNode() = default;
         RenderGraphNode(const std::string& name) : m_name(name) {}
+        virtual ~RenderGraphNode() = default;
+        const std::string& getName() const noexcept { return m_name; }
+    };
+
+    /**
+     * @brief 渲染图资源组节点，支撑 PassNode <-> ResourceGroup <-> PassNode 拓扑
+     */
+    class RenderGraphResourceGroupNode : public RenderGraphNode
+    {
+    public:
+        RenderGraphResourceGroupNode() = default;
+        RenderGraphResourceGroupNode(const std::string& name, ResourceGroup* group = nullptr)
+            : RenderGraphNode(name), m_group(group) {}
+
+        ResourceGroup* getResourceGroup() const noexcept { return m_group; }
+        void setResourceGroup(ResourceGroup* group) noexcept { m_group = group; }
+
+        void addIncomingPass(const std::string& passName) {
+            if (std::find(m_incomingPasses.begin(), m_incomingPasses.end(), passName) == m_incomingPasses.end()) {
+                m_incomingPasses.push_back(passName);
+            }
+        }
+
+        void addOutgoingPass(const std::string& passName) {
+            if (std::find(m_outgoingPasses.begin(), m_outgoingPasses.end(), passName) == m_outgoingPasses.end()) {
+                m_outgoingPasses.push_back(passName);
+            }
+        }
+
+        const std::vector<std::string>& getIncomingPasses() const noexcept { return m_incomingPasses; }
+        const std::vector<std::string>& getOutgoingPasses() const noexcept { return m_outgoingPasses; }
+
+    private:
+        ResourceGroup* m_group = nullptr;
+        std::vector<std::string> m_incomingPasses;
+        std::vector<std::string> m_outgoingPasses;
     };
 
     class Edge
     {
     public:
-
+        virtual ~Edge() = default;
     };
 
     class TargetEdge : public Edge
@@ -229,10 +266,28 @@ namespace FCT
         const EnablePassClear& getClearInfo() const {
             return m_clearInfo;
         }
+
+        void addIncomingResourceGroup(const std::string& groupName) {
+            if (std::find(m_incomingResourceGroups.begin(), m_incomingResourceGroups.end(), groupName) == m_incomingResourceGroups.end()) {
+                m_incomingResourceGroups.push_back(groupName);
+            }
+        }
+
+        void addOutgoingResourceGroup(const std::string& groupName) {
+            if (std::find(m_outgoingResourceGroups.begin(), m_outgoingResourceGroups.end(), groupName) == m_outgoingResourceGroups.end()) {
+                m_outgoingResourceGroups.push_back(groupName);
+            }
+        }
+
+        const std::vector<std::string>& getIncomingResourceGroups() const noexcept { return m_incomingResourceGroups; }
+        const std::vector<std::string>& getOutgoingResourceGroups() const noexcept { return m_outgoingResourceGroups; }
+
     private:
         std::vector<TextureEdge*> m_textureIncomingEdges;
         std::vector<TargetEdge*> m_targetOutgoingEdges;
         std::vector<DepthStencilEdge*> m_depthStencilOutgoingEdges;
+        std::vector<std::string> m_incomingResourceGroups;
+        std::vector<std::string> m_outgoingResourceGroups;
         EnablePassClear m_clearInfo;
     };
     struct PassSubmitEvent
@@ -254,15 +309,35 @@ namespace FCT
             std::string lastWriterGroup;
             bool needsBarrier = false;
         };
+        struct BufferState {
+            PipelineStages lastStage = PipelineStage::topOfPipe;
+            AccessFlags lastAccess = AccessFlag::none;
+            std::string lastWriterGroup;
+            bool needsBarrier = false;
+        };
         struct BarrierInfo {
-            Image* image;
-            ImageLayout oldLayout;
-            ImageLayout newLayout;
-            PipelineStages srcStage;
-            PipelineStages dstStage;
-            AccessFlags srcAccess;
-            AccessFlags dstAccess;
-            ImageAspects aspect;
+            bool isBuffer = false;
+            Image* image = nullptr;
+            Buffer* buffer = nullptr;
+            size_t bufferOffset = 0;
+            size_t bufferSize = 0;
+            ImageLayout oldLayout = ImageLayout::undefined;
+            ImageLayout newLayout = ImageLayout::undefined;
+            PipelineStages srcStage = PipelineStage::none;
+            PipelineStages dstStage = PipelineStage::none;
+            AccessFlags srcAccess = AccessFlag::none;
+            AccessFlags dstAccess = AccessFlag::none;
+            ImageAspects aspect = ImageAspect::color;
+        };
+        struct EdgeHash {
+            size_t operator()(const UniquePtr<Edge>& p) const noexcept {
+                return std::hash<Edge*>{}(p.get());
+            }
+        };
+        struct EdgeEqual {
+            bool operator()(const UniquePtr<Edge>& a, const UniquePtr<Edge>& b) const noexcept {
+                return a.get() == b.get();
+            }
         };
     private:
         bool m_needRecompiled = false;
@@ -286,10 +361,11 @@ namespace FCT
     private:
         std::unordered_map<std::string, std::vector<BarrierInfo>> m_passGroupBarriers;
         std::map<std::string, std::set<std::string>> m_passGroupDependencies;
-        std::unordered_map<std::string, std::unique_ptr<RenderGraphImageNode>> m_imageNodes;
+        std::unordered_map<std::string, UniquePtr<RenderGraphImageNode>> m_imageNodes;
         std::unordered_map<std::string,RenderGraphPassNode> m_passNodes;
         UnionFind<std::string,char> m_passesUnions;
-        std::unordered_set<std::unique_ptr<Edge>> m_edges;
+        std::unordered_set<UniquePtr<Edge>, EdgeHash, EdgeEqual> m_edges;
+        std::unordered_map<std::string, UniquePtr<RenderGraphResourceGroupNode>> m_resourceGroupNodes;
         std::unordered_map<std::string, Image*> m_allocatedImages;
         std::unordered_map<std::string, RHI::Pass*> m_allocatedPasses;
         std::vector<PassDesc> m_originalPasses;
@@ -314,6 +390,14 @@ namespace FCT
             m_originalPasses.clear();
             m_passDescs.clear();
         }
+
+        RenderGraphResourceGroupNode* getOrCreateResourceGroupNode(const std::string& name);
+        void connectPassToResourceGroup(const std::string& passName, const std::string& groupName);
+        void connectResourceGroupToPass(const std::string& groupName, const std::string& passName);
+        void addResourceGroupEdge(const std::string& fromPass, const std::string& groupName, const std::string& toPass);
+        ResourceGroup* getResourceGroup(const std::string& name) const;
+        const std::unordered_map<std::string, UniquePtr<RenderGraphResourceGroupNode>>& getResourceGroupNodes() const noexcept { return m_resourceGroupNodes; }
+
     private:
         RenderGraphImageNode* getOrCreateImageNode(const std::string& name, const Texture& texture);
         RenderGraphImageNode* getOrCreateImageNode(const std::string& name, const Target& target);
@@ -324,11 +408,13 @@ namespace FCT
         void removeTextureEdge(TextureEdge* edgeToRemove);
         void simulatePassGroupExecution(const std::string& groupLeader,
                                         const std::vector<std::string>& groupMembers,
-                                        std::unordered_map<Image*, ImageState>& imageStates);
+                                        std::unordered_map<Image*, ImageState>& imageStates,
+                                        std::unordered_map<Buffer*, BufferState>& bufferStates);
         void simulateExecutionAndAnalyzeBarriers();
         std::vector<BarrierInfo> checkBarriersBeforePassGroup(const std::string& groupLeader,
                                                                 const std::vector<std::string>& groupMembers,
-                                                                const std::unordered_map<Image*, ImageState>& imageStates);
+                                                                const std::unordered_map<Image*, ImageState>& imageStates,
+                                                                const std::unordered_map<Buffer*, BufferState>& bufferStates);
 
         void executeBarriers(RHI::CommandBuffer* cmdBuffer, const std::vector<BarrierInfo>& barriers);
         void removeTargetEdge(TargetEdge* edgeToRemove);
@@ -475,7 +561,11 @@ namespace FCT
         RHI::Pass* getPass(const std::string& name) const;
         Image* getImage(const std::string& name) const;
         std::vector<TextureEdge*> getTextureEdges(const std::string& passName) const;
+        TransientResourcePool* getTransientResourcePool() const noexcept { return m_transientResourcePool.get(); }
+        bool canMergePasses(const RenderGraphPassNode& a, const RenderGraphPassNode& b) const;
     private:
+        UniquePtr<TransientResourcePool> m_transientResourcePool;
+        uint32_t m_currentFrameIndex{0};
         void submitPassGroup(RHI::CommandBuffer* cmdBuffer,
                              const std::string& groupLeader);
 

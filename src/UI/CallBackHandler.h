@@ -17,6 +17,7 @@ namespace FCT {
         using KeyDownCallBack = std::function<void(Window* wnd, int key)>;
         using KeyUpCallBack = std::function<void(Window* wnd, int key)>;
         using FileDropCallBack = std::function<void(Window* wnd, const std::vector<std::string>& files)>;
+        using TouchCallBack = std::function<void(Window* wnd, const TouchEvent& event)>;
 
         /**
          * @cond CHINESE
@@ -75,6 +76,12 @@ namespace FCT {
         {
             for (const auto& pair : m_fileDropCallbacks) {
                 pair.second(wnd, files);
+            }
+        }
+
+        void onTouch(Window* wnd, const TouchEvent& event) override {
+            for (const auto& pair : m_touchCallbacks) {
+                pair.second(wnd, event);
             }
         }
 
@@ -191,6 +198,20 @@ namespace FCT {
         void clearFileDropCallbacks() {
             m_fileDropCallbacks.clear();
         }
+        CallbackId addTouchCallback(const TouchCallBack& cb) {
+            CallbackId id = m_nextId++;
+            m_touchCallbacks[id] = cb;
+            return id;
+        }
+        void removeTouchCallback(CallbackId id) {
+            m_touchCallbacks.erase(id);
+        }
+        void clearTouchCallbacks() {
+            m_touchCallbacks.clear();
+        }
+        void invokeTouchCallbacks(Window* wnd, const TouchEvent& event) {
+            onTouch(wnd, event);
+        }
         void invokeResizeCallbacks(Window* wnd, int width, int height) {
             onResize(wnd, width, height);
         }
@@ -206,6 +227,7 @@ namespace FCT {
         std::unordered_map<CallbackId, KeyDownCallBack> m_keyDownCallbacks;
         std::unordered_map<CallbackId, KeyUpCallBack> m_keyUpCallbacks;
         std::unordered_map<CallbackId, FileDropCallBack> m_fileDropCallbacks;
+        std::unordered_map<CallbackId, TouchCallBack> m_touchCallbacks;
         CallbackId m_nextId = 1;
     };
 }

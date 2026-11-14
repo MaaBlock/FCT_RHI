@@ -21,6 +21,7 @@ namespace FCT
 
             void updateData(const void* data, size_t dataSize) override;
             void updateData(const void* data, size_t dataSize, Fence* fence, std::function<void()>* onCompletion) override;
+            void updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t arrayLayer, uint32_t mipLevel, const void* pixelData, size_t rowPitch = 0) override;
             void uploadAsync(std::vector<uint8_t> data, std::function<void()> callback) override;
 
             ID3D12Resource* getResource() const { return m_resource.Get(); }

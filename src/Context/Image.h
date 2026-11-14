@@ -93,8 +93,12 @@ namespace FCT {
         virtual void updateData(const void* data, size_t dataSize) {}
         virtual void updateData(const void* data, size_t dataSize, RHI::Fence* fence, std::function<void()>* onCompletion) {}
         virtual void uploadAsync(std::vector<uint8_t> data, std::function<void()> callback) {}
+        virtual void updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t arrayLayer, uint32_t mipLevel, const void* pixelData, size_t rowPitch = 0) = 0;
 
         virtual size_t textureViewHash() const = 0;
+
+        virtual bool isRenderbuffer() const noexcept { return m_isRenderbuffer; }
+        virtual void setIsRenderbuffer(bool renderbuffer) noexcept { m_isRenderbuffer = renderbuffer; }
     protected:
         ImageBehavior* m_behavior;
         Context* m_ctx;
@@ -102,6 +106,7 @@ namespace FCT {
         int m_height;
         int m_arrayLayers = 1;
         bool m_isCubeMap = false;
+        bool m_isRenderbuffer{false};
         Format m_format;
         Samples m_samples;
         RenderTargetType m_renderTargetType;

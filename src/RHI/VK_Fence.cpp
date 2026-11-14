@@ -22,7 +22,15 @@ namespace FCT
 
         void VK_Fence::create()
         {
-            addRef();
+            if (count() == 0)
+            {
+                addRef();
+            }
+            if (m_fence)
+            {
+                m_ctx->device().destroyFence(m_fence, nullptr);
+                m_fence = nullptr;
+            }
             vk::FenceCreateInfo createInfo{};
             createInfo.flags |= m_signaled ? vk::FenceCreateFlagBits::eSignaled : vk::FenceCreateFlags(0);
             m_fence = m_ctx->device().createFence(createInfo);

@@ -47,9 +47,9 @@ namespace FCT
             explicit D3D12_TraditionalPipeline(D3D12_Context* ctx);
             ~D3D12_TraditionalPipeline() override;
 
-            PipelineType getType() const override { return PipelineType::Traditional; }
+            PipelineType getType() const noexcept override { return PipelineType::Traditional; }
             void addResources(IPipelineResource* resource) override;
-            void create() override;
+            Status create() override;
             void bindPass(Pass* pass) override;
             void bind(D3D12_CommandBuffer* cmdBuf) override;
 

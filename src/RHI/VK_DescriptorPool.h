@@ -11,7 +11,8 @@ namespace FCT
         class VK_DescriptorPool : public DescriptorPool{
         public:
             VK_DescriptorPool(VK_Context* ctx);
-            void create();
+            ~VK_DescriptorPool() override;
+            void create() override;
             vk::DescriptorPool& getPool() { return m_descriptorPool; }
         protected:
             VK_Context* m_ctx;

@@ -244,6 +244,13 @@ namespace FCT
         }
     }
 
+    void MutilBufferImage::updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t arrayLayer, uint32_t mipLevel, const void* pixelData, size_t rowPitch)
+    {
+        if (!m_images.empty() && m_currentIndex < m_images.size() && m_images[m_currentIndex]) {
+            m_images[m_currentIndex]->updateSubRegion(x, y, width, height, arrayLayer, mipLevel, pixelData, rowPitch);
+        }
+    }
+
     UpdateResult* MutilBufferImage::updateToCurrent(void* data, size_t size)
     {
         UpdateResult* res = new UpdateResult();
@@ -254,6 +261,6 @@ namespace FCT
 
     size_t MutilBufferImage::textureViewHash() const
     {
-        return !m_tvs.empty() ? reinterpret_cast<size_t>(m_tvs[0]) : 0;
+        return m_currentIndex < m_tvs.size() ? reinterpret_cast<size_t>(m_tvs[m_currentIndex]) : 0;
     }
 }

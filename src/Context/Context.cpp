@@ -5,6 +5,9 @@
 #include "./Context.h"
 #include "RenderGraph.h"
 #include "../Runtime/runtime.h"
+#include "./TraditionalPipeline.h"
+#include "./MeshShaderPipeline.h"
+#include "./RayTracingPipeline.h"
 
 
 namespace FCT {
@@ -198,7 +201,7 @@ namespace FCT {
         std::atomic<bool> isInited{false};
         m_submitThread = std::thread([this, &isInited]
         {
-            tracy::SetThreadName("RHI Submit Thread");
+            FCT::SetThreadName("RHI Submit Thread");
             m_submitThreadId = std::this_thread::get_id();
             isInited.store(true, std::memory_order_release);
             submitThread();
@@ -208,8 +211,13 @@ namespace FCT {
         m_generator = new ShaderGenerator();
         m_frameIndex = 0;
         m_maxFrameInFlight = 3;
-        m_imageLoader = runtime->createImageLoader();
-        m_modelLoader = runtime->createModelLoader();
+        if (runtime) {
+            m_imageLoader = runtime->createImageLoader();
+            m_modelLoader = runtime->createModelLoader();
+        } else {
+            m_imageLoader = nullptr;
+            m_modelLoader = nullptr;
+        }
         m_submitTickers[SwapBufferSubmitTicker] = {
             [this]()
             {
@@ -217,6 +225,9 @@ namespace FCT {
                 {
                     ZoneScopedN("SwapBuffer / WaitGPU");
                     ScopeTimer waitGpuTimer("waitGpu");
+                    if (m_bindWindows.empty()) {
+                        waitGpu();
+                    }
                     m_cmdGraph->swapBuffer();
                     //swapBuffers();
                 }
@@ -254,13 +265,7 @@ namespace FCT {
     }
 
     Context::~Context() {
-        stopSubmitThread();
-        m_transferRunning.store(false, std::memory_order_release);
-        if (m_transferThread.joinable()) {
-            m_transferThread.join();
-        }
-        FCT_SAFE_DELETE(m_renderGraph);
-        flushAllDeferredReleases();
+        requestExit();
     }
 
     void Context::deferRelease(RefCount* resource)
@@ -317,7 +322,25 @@ namespace FCT {
         }
     }
 
-    void Context_UnusedStub() {
+    void Context::unbindWindow(Window* wnd)
+    {
+        ZoneScopedN("Context::unbindWindow");
+        if (!wnd)
+        {
+            return;
+        }
+        waitGpu();
+        if (wnd->swapchain())
+        {
+            wnd->swapchain()->release();
+        }
+        wnd->setContext(nullptr);
+        auto it = std::find(m_bindWindows.begin(), m_bindWindows.end(), wnd);
+        if (it != m_bindWindows.end())
+        {
+            m_bindWindows.erase(it);
+        }
+        trigger(ContextEvent::WindowUnbound{wnd, this});
     }
 
     PipeHub& Context::pipeHub()
@@ -379,5 +402,38 @@ namespace FCT {
         auto md = m_modelLoader->loadModel(filename);
         auto mMesh =  md->findMesh(meshName);
         return createMesh(mMesh,layout);
+    }
+
+    TraditionalPipeline* Context::createTraditionalPipeline()
+    {
+        auto rhiPipeline = createRhiPipeline(PipelineType::Traditional);
+        if (!rhiPipeline) {
+            return nullptr;
+        }
+        return FCT_NEW(TraditionalPipeline, this, std::move(rhiPipeline));
+    }
+
+    MeshShaderPipeline* Context::createMeshShaderPipeline()
+    {
+        auto rhiPipeline = createRhiPipeline(PipelineType::MeshShader);
+        if (!rhiPipeline) {
+            return nullptr;
+        }
+        return FCT_NEW(MeshShaderPipeline, this, std::move(rhiPipeline));
+    }
+
+    RayTracingPipeline* Context::createRayTracingPipeline()
+    {
+        auto rhiPipeline = createRhiPipeline(PipelineType::RayTracing);
+        if (!rhiPipeline) {
+            return nullptr;
+        }
+        return FCT_NEW(RayTracingPipeline, this, std::move(rhiPipeline));
+    }
+
+    UniquePtr<RHI::Pipeline> Context::createRhiPipeline(PipelineType type)
+    {
+        (void)type;
+        return nullptr;
     }
 }

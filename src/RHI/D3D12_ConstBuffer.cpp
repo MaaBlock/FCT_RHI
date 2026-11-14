@@ -2,6 +2,7 @@
 #include "./D3D12_ConstBuffer.h"
 #include "../Context/D3D12_Context.h"
 #include "../Context/ConstBuffer.h"
+#include "../Context/Uniform.h"
 
 namespace FCT
 {
@@ -141,6 +142,24 @@ namespace FCT
             if (m_mappedData[frameIdx])
             {
                 memcpy(m_mappedData[frameIdx], m_buffer->getData(), m_buffer->getSize());
+            }
+        }
+
+        void D3D12_ConstBuffer::upload(const void* data, size_t size)
+        {
+            upload(data, size, 0);
+        }
+
+        void D3D12_ConstBuffer::upload(const void* data, size_t size, size_t offset)
+        {
+            if (!data || size == 0 || m_mappedData.empty()) return;
+            uint32_t frameIdx = (m_layout.getUpdateFrequency() == UpdateFrequency::Static)
+                ? 0
+                : m_ctx->currentSubmitFrameIndex();
+            if (frameIdx >= m_mappedData.size()) frameIdx = 0;
+            if (m_mappedData[frameIdx] && offset < m_alignedSize) {
+                size_t copySize = std::min(size, m_alignedSize - offset);
+                memcpy(static_cast<char*>(m_mappedData[frameIdx]) + offset, data, copySize);
             }
         }
 

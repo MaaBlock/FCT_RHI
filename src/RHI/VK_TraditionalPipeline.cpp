@@ -7,15 +7,13 @@
 #include "../Context/PixelShader.h"
 #include "./VK_VertexShader.h"
 #include "./VK_PixelShader.h"
+#include "./VK_Pass.h"
 #include "../Context/Context.hpp"
 namespace FCT
 {
     namespace RHI
     {
-        PipelineType VK_TraditionalPipeline::getType() const
-        {
-            return PipelineType::Traditional;
-        }
+
 
         VK_TraditionalPipeline::VK_TraditionalPipeline(VK_Context* ctx) : VK_RasterizationPipeline(ctx)
         {
@@ -43,6 +41,9 @@ namespace FCT
 
             for(auto& pair : m_descriptorSetLayouts)
             {
+                if (m_ctx && pair.second == m_ctx->getBindlessSetLayout()) {
+                    continue;
+                }
                 m_ctx->getDevice().destroyDescriptorSetLayout(pair.second);
             }
             m_descriptorSetLayouts.clear();
@@ -80,14 +81,33 @@ namespace FCT
             }
         }
 
-        void VK_TraditionalPipeline::create()
+        Status VK_TraditionalPipeline::create()
         {
             ZoneScoped();
             generateDefaultResources();
-            createDescriptorSetLayouts();
-            m_shaderStages.push_back(static_cast<VK_VertexShader*>(m_vertexShader->vertexShader())->getStageInfo());
-            m_shaderStages.push_back(static_cast<VK_PixelShader*>(m_pixelShader->pixelShader())->getStageInfo());
-            VK_RasterizationPipeline::create();
+            FCT_CHECK_STATUS(createDescriptorSetLayouts());
+
+            m_shaderStages.clear();
+            if (m_vertexShader && m_vertexShader->vertexShader())
+            {
+                const auto stageInfo = static_cast<VK_VertexShader*>(m_vertexShader->vertexShader())->getStageInfo();
+                if (!stageInfo.module)
+                {
+                    return FailedPreconditionError("VK_TraditionalPipeline: 顶点着色器模块为空，中止创建管线");
+                }
+                m_shaderStages.push_back(stageInfo);
+            }
+            if (m_pixelShader && m_pixelShader->pixelShader())
+            {
+                const auto stageInfo = static_cast<VK_PixelShader*>(m_pixelShader->pixelShader())->getStageInfo();
+                if (!stageInfo.module)
+                {
+                    return FailedPreconditionError("VK_TraditionalPipeline: 像素着色器模块为空，中止创建管线");
+                }
+                m_shaderStages.push_back(stageInfo);
+            }
+
+            return VK_RasterizationPipeline::create();
         }
         void VK_TraditionalPipeline::generateDefaultResources()
         {
@@ -104,7 +124,7 @@ namespace FCT
                 m_vertexShader->pixelLayout(m_pixelLayout);
                 m_vertexShader->create();
             }
-            if (!m_pixelShader)
+            if (!m_pixelShader && (!m_pass || !m_pass->renderTargets().empty()))
             {
                 m_pixelShader = m_ctx->createResource<FCT::PixelShader>();
                 m_pixelShader->pixelLayout(m_pixelLayout);
@@ -116,7 +136,7 @@ namespace FCT
                 m_inputLayout = static_cast<VK_InputLayout*>(m_vertexShader->createBindedInputLayout());
             }
         }
-        void VK_TraditionalPipeline::createDescriptorSetLayouts()
+        Status VK_TraditionalPipeline::createDescriptorSetLayouts()
         {
             ZoneScoped();
             std::map<uint32_t, std::set<uint32_t>> usedBindings;
@@ -397,19 +417,45 @@ namespace FCT
                 }
             }
 
+            bool isBindless = false;
+            if (m_ctx && m_ctx->isBindlessSupported() && m_ctx->getBindlessSetLayout()) {
+                if (m_pixelShader && (m_pixelShader->userSource().find("BindlessCommon.hlsli") != std::string::npos ||
+                                      m_pixelShader->source().find("BindlessCommon.hlsli") != std::string::npos)) {
+                    isBindless = true;
+                }
+                if (m_vertexShader && (m_vertexShader->userSource().find("BindlessCommon.hlsli") != std::string::npos ||
+                                       m_vertexShader->source().find("BindlessCommon.hlsli") != std::string::npos)) {
+                    isBindless = true;
+                }
+            }
+
             m_descriptorSetLayouts.clear();
             for (const auto& [set, bindings] : setBindings) {
+                if (set == 0 && isBindless) {
+                    continue;
+                }
                 vk::DescriptorSetLayoutCreateInfo layoutInfo(
                     vk::DescriptorSetLayoutCreateFlags(),
                     static_cast<uint32_t>(bindings.size()),
                     bindings.data()
                 );
 
-                try {
-                    m_descriptorSetLayouts[set] = m_ctx->getDevice().createDescriptorSetLayout(layoutInfo);
-                } catch (const vk::SystemError& e) {
-                    throw std::runtime_error("Failed to create descriptor set layout: " + std::string(e.what()));
+                vk::DescriptorSetLayout layout;
+                vk::Result res = m_ctx->getDevice().createDescriptorSetLayout(&layoutInfo, nullptr, &layout);
+                if (res != vk::Result::eSuccess) {
+                    for (auto& pair : m_descriptorSetLayouts) {
+                        if (pair.second != m_ctx->getBindlessSetLayout()) {
+                            m_ctx->getDevice().destroyDescriptorSetLayout(pair.second);
+                        }
+                    }
+                    m_descriptorSetLayouts.clear();
+                    return InternalError(StrCat("VK_TraditionalPipeline: 创建描述符集布局失败 (Set ", set, "), Vulkan 错误: ", vk::to_string(res)));
                 }
+                m_descriptorSetLayouts[set] = layout;
+            }
+
+            if (isBindless) {
+                m_descriptorSetLayouts[0] = m_ctx->getBindlessSetLayout();
             }
 
             m_descriptorSetLayoutsArr.clear();
@@ -425,10 +471,15 @@ namespace FCT
                     nullptr
                 );
                 vk::DescriptorSetLayout emptyLayout;
-                try {
-                    emptyLayout = m_ctx->getDevice().createDescriptorSetLayout(emptyLayoutInfo);
-                } catch (const vk::SystemError& e) {
-                    throw std::runtime_error("Failed to create empty descriptor set layout: " + std::string(e.what()));
+                vk::Result res = m_ctx->getDevice().createDescriptorSetLayout(&emptyLayoutInfo, nullptr, &emptyLayout);
+                if (res != vk::Result::eSuccess) {
+                    for (auto& pair : m_descriptorSetLayouts) {
+                        if (pair.second != m_ctx->getBindlessSetLayout()) {
+                            m_ctx->getDevice().destroyDescriptorSetLayout(pair.second);
+                        }
+                    }
+                    m_descriptorSetLayouts.clear();
+                    return InternalError(StrCat("VK_TraditionalPipeline: 创建空描述符集布局失败, Vulkan 错误: ", vk::to_string(res)));
                 }
 
                 m_descriptorSetLayoutsArr.resize(maxSet + 1, emptyLayout);
@@ -448,11 +499,22 @@ namespace FCT
                 nullptr
             );
 
-            try {
-                m_pipelineLayout = m_ctx->getDevice().createPipelineLayout(pipelineLayoutInfo);
-            } catch (const vk::SystemError& e) {
-                throw std::runtime_error("Failed to create pipeline layout: " + std::string(e.what()));
+            vk::Result res = m_ctx->getDevice().createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_pipelineLayout);
+            if (res != vk::Result::eSuccess) {
+                for (auto& pair : m_descriptorSetLayouts) {
+                    if (pair.second != m_ctx->getBindlessSetLayout()) {
+                        m_ctx->getDevice().destroyDescriptorSetLayout(pair.second);
+                    }
+                }
+                m_descriptorSetLayouts.clear();
+                if (m_emptyLayout) {
+                    m_ctx->getDevice().destroyDescriptorSetLayout(m_emptyLayout);
+                    m_emptyLayout = nullptr;
+                }
+                return InternalError(StrCat("VK_TraditionalPipeline: 创建管线布局失败, Vulkan 错误: ", vk::to_string(res)));
             }
+
+            return OkStatus();
         }
     }
 }

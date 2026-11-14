@@ -23,9 +23,33 @@ namespace FCT {
     public:
         VK_Context(VK_ContextCommon* common);
         ~VK_Context() override;
+        void waitGpu() override;
+        void cleanupGpuResources() override;
+        void unbindWindow(Window* wnd) override;
         RHI::RasterizationPipeline* createTraditionPipeline() override;
+        UniquePtr<RHI::Pipeline> createRhiPipeline(PipelineType type) override;
         bool isIntegrateGpu() override;
-        bool isBindlessSupported() const override { return m_bindlessSupported; }
+        bool isRayTracingSupported() const noexcept override { return m_rayTracingSupported; }
+        bool isMeshShaderSupported() const noexcept override { return false; }
+        bool isComputeSupported() const noexcept override { return true; }
+        bool isBindlessSupported() const noexcept override { return m_bindlessSupported; }
+        bool isReadWriteStorageBufferSupported() const noexcept override { return true; }
+        bool isIndirectDrawSupported() const noexcept override { return true; }
+        bool isBaseInstanceSupported() const noexcept override { return true; }
+        uint32_t getUniformBufferOffsetAlignment() const noexcept override;
+        uint32_t getMaxUniformBufferRange() const noexcept override;
+        void setBindlessSetLayout(vk::DescriptorSetLayout layout) { m_bindlessSetLayout = layout; }
+        vk::DescriptorSetLayout getBindlessSetLayout() const { return m_bindlessSetLayout; }
+        bool isAccelerationStructureSupported() const noexcept { return m_accelerationStructureSupported; }
+
+        const vk::PhysicalDeviceRayTracingPipelinePropertiesKHR& getRayTracingPipelineProperties() const noexcept
+        {
+            return m_rtPipelineProperties;
+        }
+        const vk::PhysicalDeviceAccelerationStructurePropertiesKHR& getAccelerationStructureProperties() const noexcept
+        {
+            return m_asProperties;
+        }
         //void create(IRenderTarget* target) override;
         uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
         void createPlatform(ContextCreateFlags flag) override;
@@ -79,6 +103,8 @@ namespace FCT {
                                       std::function<void()> onCompletion);
                                       
         void acquireImageOwnership(Image* image) override;
+        bool isBufferDeviceAddressSupported() const noexcept { return m_bufferDeviceAddressSupported; }
+        RHI::StorageBuffer* createStorageBuffer(size_t size = 0) override;
 
     private:
         vk::Buffer m_stageBuffer;
@@ -128,9 +154,15 @@ namespace FCT {
         std::unordered_map<size_t, std::unique_ptr<RHI::ConstBuffer>> m_emptyConstBufferCache;
         std::unique_ptr<Sampler> m_emptySampler;
         bool m_bindlessSupported = false;
+        bool m_bufferDeviceAddressSupported = false;
+        bool m_rayTracingSupported = false;
+        bool m_accelerationStructureSupported = false;
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR m_rtPipelineProperties{};
+        vk::PhysicalDeviceAccelerationStructurePropertiesKHR m_asProperties{};
         vk::Buffer m_syncStagingBuffer;
         vk::DeviceMemory m_syncStagingMemory;
         size_t m_syncStagingBufferSize = 0;
+        vk::DescriptorSetLayout m_bindlessSetLayout = nullptr;
     };
 }
 

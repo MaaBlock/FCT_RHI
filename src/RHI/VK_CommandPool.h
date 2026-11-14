@@ -7,6 +7,8 @@
 
 namespace FCT
 {
+    class VK_Context;
+
     namespace RHI
     {
         class VK_CommandPool : public CommandPool {

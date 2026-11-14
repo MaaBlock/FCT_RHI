@@ -116,6 +116,10 @@ namespace FCT
     {
         auto resource = getCurrentPassResource();
         auto pipeline = getCurrentPipeline();
+        if (!pipeline || pipeline->getNativeHandle() == 0)
+        {
+            return;
+        }
 
         pipeline->bind(cmdBuffer);
         resource->bind(cmdBuffer,pipeline);
@@ -128,6 +132,10 @@ namespace FCT
     {
         auto resource = getCurrentPassResource();
         auto pipeline = getCurrentPipeline();
+        if (!pipeline || pipeline->getNativeHandle() == 0)
+        {
+            return;
+        }
 
         pipeline->bind(cmdBuffer);
         resource->bind(cmdBuffer, pipeline);
@@ -142,6 +150,10 @@ namespace FCT
     {
         auto resource = getCurrentPassResource();
         auto pipeline = getCurrentPipeline();
+        if (!pipeline || pipeline->getNativeHandle() == 0)
+        {
+            return;
+        }
 
         pipeline->bind(cmdBuffer);
         resource->bind(cmdBuffer,pipeline);

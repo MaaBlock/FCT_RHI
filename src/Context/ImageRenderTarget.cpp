@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Administrator on 2025/3/27.
 //
 
@@ -19,12 +19,8 @@ namespace FCT
 
     ImageRenderTarget::~ImageRenderTarget()
     {
-        /*
-        for (auto target : m_renderTargetImages)
-        {
-            target.second->release();
-        }*/
-        m_target->release();
+        FCT_SAFE_RELEASE(m_target);
+        FCT_SAFE_RELEASE(m_depthStencilBuffer);
     }
 
     void ImageRenderTarget::bindTarget(RHI::Image* image)

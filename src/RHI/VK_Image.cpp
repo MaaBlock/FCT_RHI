@@ -213,6 +213,76 @@ namespace FCT {
                 ferr << "Failed to update image data: " << e.what() << std::endl;
             }
         }
+        void VK_Image::updateSubRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                                       uint32_t arrayLayer, uint32_t mipLevel,
+                                       const void* pixelData, size_t rowPitch)
+        {
+            if (!pixelData || width == 0 || height == 0 || !m_image) return;
+            size_t pixelSize = FormatSize(m_format);
+            if (pixelSize == 0) pixelSize = 4;
+            size_t actualPitch = (rowPitch > 0) ? rowPitch : (width * pixelSize);
+            size_t copySize = actualPitch * height;
+
+            vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor;
+            if (m_usage & ImageUsage::DepthStencil) {
+                aspectMask = vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil;
+            }
+
+            vk::BufferCreateInfo stagingBufferInfo;
+            stagingBufferInfo.setSize(copySize);
+            stagingBufferInfo.setUsage(vk::BufferUsageFlagBits::eTransferSrc);
+            stagingBufferInfo.setSharingMode(vk::SharingMode::eExclusive);
+            vk::Buffer stagingBuffer = m_ctx->getDevice().createBuffer(stagingBufferInfo);
+
+            vk::MemoryRequirements memReq = m_ctx->getDevice().getBufferMemoryRequirements(stagingBuffer);
+            vk::MemoryAllocateInfo allocInfo(memReq.size, m_ctx->findMemoryType(memReq.memoryTypeBits,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent));
+            vk::DeviceMemory stagingMem = m_ctx->getDevice().allocateMemory(allocInfo);
+            m_ctx->getDevice().bindBufferMemory(stagingBuffer, stagingMem, 0);
+
+            void* mapped = m_ctx->getDevice().mapMemory(stagingMem, 0, copySize);
+            std::memcpy(mapped, pixelData, copySize);
+            m_ctx->getDevice().unmapMemory(stagingMem);
+
+            vk::CommandBuffer cmd = m_ctx->beginSingleTimeCommands();
+
+            vk::ImageMemoryBarrier barrier;
+            barrier.setOldLayout(vk::ImageLayout::eUndefined)
+                   .setNewLayout(vk::ImageLayout::eTransferDstOptimal)
+                   .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                   .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                   .setImage(m_image)
+                   .setSubresourceRange(vk::ImageSubresourceRange(aspectMask, mipLevel, 1, arrayLayer, 1))
+                   .setSrcAccessMask(vk::AccessFlags())
+                   .setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
+            cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer,
+                                vk::DependencyFlags(), 0, nullptr, 0, nullptr, 1, &barrier);
+
+            vk::BufferImageCopy region;
+            region.setBufferOffset(0)
+                  .setBufferRowLength(static_cast<uint32_t>(actualPitch / pixelSize))
+                  .setBufferImageHeight(height)
+                  .setImageSubresource(vk::ImageSubresourceLayers(aspectMask, mipLevel, arrayLayer, 1))
+                  .setImageOffset(vk::Offset3D(static_cast<int32_t>(x), static_cast<int32_t>(y), 0))
+                  .setImageExtent(vk::Extent3D(width, height, 1));
+            cmd.copyBufferToImage(stagingBuffer, m_image, vk::ImageLayout::eTransferDstOptimal, 1, &region);
+
+            vk::ImageLayout targetLayout = (m_usage & ImageUsage::RenderTarget)
+                ? vk::ImageLayout::ePresentSrcKHR
+                : vk::ImageLayout::eShaderReadOnlyOptimal;
+            barrier.setOldLayout(vk::ImageLayout::eTransferDstOptimal)
+                   .setNewLayout(targetLayout)
+                   .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
+                   .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+            cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader,
+                                vk::DependencyFlags(), 0, nullptr, 0, nullptr, 1, &barrier);
+
+            m_ctx->endSingleTimeCommands(cmd);
+
+            m_ctx->getDevice().destroyBuffer(stagingBuffer);
+            m_ctx->getDevice().freeMemory(stagingMem);
+        }
+
         void VK_Image::create(vk::Image image)
         {
             m_image = image;

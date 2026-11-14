@@ -4,10 +4,15 @@
 
 #ifndef INDEXBUFFER_H
 #define INDEXBUFFER_H
+
+#include "../Context/ResourceLayout.h"
+
 namespace FCT
 {
     namespace RHI
     {
+        class CommandBuffer;
+
         class IIndexData
         {
         public:

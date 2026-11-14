@@ -2,6 +2,10 @@
 #include "./Context.h"
 #include "./Context.hpp"
 #include "../UI/Window.h"
+#ifdef FCT_USE_VULKAN
+#include "./VK_Context.h"
+#include "../RHI/VK_CommandPool.h"
+#endif
 namespace FCT {
     void CommandBufferNodes::InputFromWindow::fillSynchronization(uint32_t frameIndex)
     {
@@ -155,6 +159,35 @@ namespace FCT {
         m_frameDirty[frameIndex] = false;
     }
 
+    CommandBufferEdges::InputFromWindow::~InputFromWindow()
+    {
+        for (auto& semaphore : m_imageAvailable)
+        {
+            if (semaphore) {
+                semaphore->release();
+            }
+        }
+        m_imageAvailable.clear();
+    }
+
+    CommandBufferEdges::OutputToWindow::~OutputToWindow()
+    {
+        for (auto& semaphore : m_renderFinished)
+        {
+            if (semaphore) {
+                semaphore->release();
+            }
+        }
+        m_renderFinished.clear();
+        for (auto& fence : m_fences)
+        {
+            if (fence) {
+                fence->release();
+            }
+        }
+        m_fences.clear();
+    }
+
     void CommandBufferEdges::InputFromWindow::updateSynchronization(uint32_t newMaxFrameInFlight)
     {
 
@@ -197,7 +230,11 @@ namespace FCT {
             m_fences.reserve(newMaxFrameInFlight);
             for (uint32_t i = 0; i < newMaxFrameInFlight; ++i) {
                 auto fence = m_fencePool->alloc();
-                fence->createSignaled();
+                if (i == 0) {
+                    fence->create();
+                } else {
+                    fence->createSignaled();
+                }
                 m_fences.push_back(fence);
             }
         }
@@ -210,6 +247,35 @@ namespace FCT {
         m_semaphorePool = device->createResource<SemaphorePool>();
         m_fencePool = device->createResource<FencePool>();
         m_device = device;
+    }
+
+    CommandBufferGraph::~CommandBufferGraph()
+    {
+        m_edges.clear();
+        for (auto* node : m_nodes)
+        {
+            FCT_DELETE(node);
+        }
+        m_nodes.clear();
+        m_windowInputNodes.clear();
+        m_windowOutputNodes.clear();
+        m_windows.clear();
+        if (m_cmdPool)
+        {
+#ifdef FCT_USE_VULKAN
+            if (auto* vkCmdPool = dynamic_cast<RHI::VK_CommandPool*>(m_cmdPool))
+            {
+                if (vkCmdPool->pool() && vkCmdPool->context() && vkCmdPool->context()->device())
+                {
+                    vkCmdPool->context()->device().destroyCommandPool(vkCmdPool->pool());
+                }
+            }
+#endif
+            m_cmdPool->release();
+            m_cmdPool = nullptr;
+        }
+        FCT_SAFE_DELETE(m_semaphorePool);
+        FCT_SAFE_DELETE(m_fencePool);
     }
 
     CommandBufferNodes::InputFromWindow* CommandBufferGraph::getOrCreateWindowInputNode(Window* window)
@@ -288,6 +354,10 @@ namespace FCT {
         m_edges.insert(std::move(edge));
 
         windowInputNode->fillAllSynchronization();
+        if (window) {
+            window->setPresentFinshSemaphore(windowInputNode->getCollectedImageAvailableSemaphore(static_cast<uint32_t>(m_frameIndex)));
+            window->initRender();
+        }
     }
 
     void CommandBufferGraph::connectWindowSuccessor(CommandBufferNodes::CommandBuffer* buffer, Window* window)

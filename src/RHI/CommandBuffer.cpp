@@ -1,4 +1,5 @@
-﻿#include "CommandBuffer.h"
+#include "CommandBuffer.h"
+#include "RayTracingPipeline.h"
 
 #include "Fence.h"
 #include "Semaphore.h"
@@ -50,6 +51,15 @@ namespace FCT{
           {
                semaphore->addRef();
                m_signalSemaphores.push_back(semaphore);
+          }
+
+          void CommandBuffer::traceRays(
+              const StridedDeviceAddressRegions& regions,
+              uint32_t width,
+              uint32_t height,
+              uint32_t depth)
+          {
+              traceRays(&regions.rayGen, &regions.miss, &regions.hitGroup, &regions.callable, width, height, depth);
           }
      }
 }

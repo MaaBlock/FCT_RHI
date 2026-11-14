@@ -1,4 +1,4 @@
-﻿#include "../FCTAPI.h"
+#include "../FCTAPI.h"
 
 void FCT::Window::registerHandler(EventHandler* handler)
 {
@@ -37,7 +37,6 @@ void FCT::Window::addSingleComponent(const WindowModule::Swapchain& component)
 	m_swapchain->size(m_width, m_height);
 	m_swapchain->create();
 	delete surface;
-	m_swapchain->acquireFirstImage();
 	m_ctx->onWindowBound(this);
 	m_delayModuleCreate.trigger<WindowModule::Swapchain>();
 }
@@ -95,6 +94,16 @@ namespace FCT
 	void Window::bind(Context* ctx)
 	{
 		addModule(WindowModule::Swapchain(ctx));
+	}
+
+	void Window::destroy()
+	{
+		if (m_ctx)
+		{
+			m_ctx->unbindWindow(this);
+			m_ctx = nullptr;
+		}
+		destroyPlatform();
 	}
 }
 

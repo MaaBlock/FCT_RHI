@@ -153,13 +153,17 @@ namespace FCT
                 static_cast<UINT>(instanceStart));
         }
 
+        void D3D12_CommandBuffer::bindPipeline(Pipeline* pipeline)
+        {
+            if (pipeline)
+            {
+                pipeline->bind(this);
+            }
+        }
+
         void D3D12_CommandBuffer::bindPipieline(RasterizationPipeline* pipeline)
         {
-            auto* d3dPipeline = static_cast<D3D12_TraditionalPipeline*>(pipeline);
-            if (d3dPipeline)
-            {
-                d3dPipeline->bind(this);
-            }
+            bindPipeline(pipeline);
         }
 
         void D3D12_CommandBuffer::end()

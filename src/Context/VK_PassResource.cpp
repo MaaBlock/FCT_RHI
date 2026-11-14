@@ -87,6 +87,7 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
                 layout = nullptr;
             }
         }
+        outLayouts.clear();
 
         if (!outDescriptorSets.empty()) {
             try {
@@ -416,19 +417,30 @@ bool VK_PassResource::createDescriptorSetsAndLayouts(uint32_t frameIdx,
 
         auto pipeline = static_cast<RHI::VK_RasterizationPipeline*>(srcPipeline);
         vk::PipelineLayout pipelineLayout = pipeline->pipelineLayout();
+        if (!pipelineLayout) {
+            return;
+        }
 
         vk::PipelineBindPoint bindPoint = vk::PipelineBindPoint::eGraphics;
 
         if (!m_descriptorSets[frameIdx].empty()) {
-            commandBuffer.bindDescriptorSets(
-                bindPoint,
-                pipelineLayout,
-                0,
-                static_cast<uint32_t>(m_descriptorSets[frameIdx].size()),
-                m_descriptorSets[frameIdx].data(),
-                0,
-                nullptr
-            );
+            uint32_t firstSet = 0;
+            const auto pipeLayouts = pipeline->descriptorSetLayouts();
+            if (!pipeLayouts.empty() && m_ctx->getBindlessSetLayout() &&
+                pipeLayouts[0] == m_ctx->getBindlessSetLayout()) {
+                firstSet = 1;
+            }
+            if (firstSet < m_descriptorSets[frameIdx].size()) {
+                commandBuffer.bindDescriptorSets(
+                    bindPoint,
+                    pipelineLayout,
+                    firstSet,
+                    static_cast<uint32_t>(m_descriptorSets[frameIdx].size() - firstSet),
+                    m_descriptorSets[frameIdx].data() + firstSet,
+                    0,
+                    nullptr
+                );
+            }
         }
     }
 

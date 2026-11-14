@@ -2,6 +2,8 @@
 // Created by Administrator on 2025/7/28.
 //
 #include "ResourceManager.h"
+#include "ResourceGroup.h"
+#include "../MutilThreadBase/UniquePtr.h"
 
 #include "MutilBufferImage.h"
 #include "SingleBufferImage.h"
@@ -239,5 +241,70 @@ namespace FCT
         };
         updateGraph();
         return ret.img;
+    }
+
+    ResourceGroup* ResourceManager::getOrCreateResourceGroup(const std::string& groupName)
+    {
+        ZoneScoped();
+        auto it = m_resourceGroups.find(groupName);
+        if (it != m_resourceGroups.end()) {
+            return it->second.get();
+        }
+        auto group = makeUnique<ResourceGroup>(groupName);
+        auto* raw = group.get();
+        m_resourceGroups[groupName] = std::move(group);
+        return raw;
+    }
+
+    ResourceGroup* ResourceManager::getResourceGroup(const std::string& groupName) const
+    {
+        auto it = m_resourceGroups.find(groupName);
+        return (it != m_resourceGroups.end()) ? it->second.get() : nullptr;
+    }
+
+    Image* ResourceManager::require(const std::string& groupName, const ResourceRequireDesc& desc)
+    {
+        ZoneScoped();
+        auto* group = getOrCreateResourceGroup(groupName);
+        if (!group) return nullptr;
+        return group->require(m_context, desc);
+    }
+
+    Buffer* ResourceManager::requireBuffer(const std::string& groupName, const BufferRequireDesc& desc)
+    {
+        ZoneScoped();
+        auto* group = getOrCreateResourceGroup(groupName);
+        if (!group) return nullptr;
+        return group->requireBuffer(m_context, desc);
+    }
+
+    void ResourceManager::releaseGroupResource(const std::string& groupName, const std::string& resourceId)
+    {
+        ZoneScoped();
+        auto* group = getResourceGroup(groupName);
+        if (group) {
+            group->release(resourceId, m_context);
+        }
+    }
+
+    void ResourceManager::releaseGroupBuffer(const std::string& groupName, const std::string& resourceId)
+    {
+        ZoneScoped();
+        auto* group = getResourceGroup(groupName);
+        if (group) {
+            group->releaseBuffer(resourceId, m_context);
+        }
+    }
+
+    std::vector<ResourceGroup*> ResourceManager::getAllResourceGroups() const
+    {
+        std::vector<ResourceGroup*> groups;
+        groups.reserve(m_resourceGroups.size());
+        for (const auto& [name, group] : m_resourceGroups) {
+            if (group) {
+                groups.push_back(group.get());
+            }
+        }
+        return groups;
     }
 }
