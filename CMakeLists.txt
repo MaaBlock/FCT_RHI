@@ -283,6 +283,10 @@ else()
     message(STATUS "Using existing FCT_Base target")
 endif()
 
+if(EXISTS "${CMAKE_BINARY_DIR}/include-src/CMakeLists.txt")
+    set(FETCHCONTENT_SOURCE_DIR_INCLUDE "${CMAKE_BINARY_DIR}/include-src" CACHE PATH "Reuse pre-populated buildingcpp/include source directory" FORCE)
+    set(FETCHCONTENT_UPDATES_DISCONNECTED_INCLUDE ON CACHE BOOL "Skip online git update check for pre-populated buildingcpp/include" FORCE)
+endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/work_contract work_contract)
 
 add_library(FCT STATIC

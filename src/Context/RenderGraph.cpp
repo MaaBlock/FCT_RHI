@@ -622,18 +622,23 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
             }
 
             const SizeNode* root = bufferNode->getRoot();
+            const bool isWindowRooted =
+                (dynamic_cast<const RenderGraphWindowTargetNode*>(root) != nullptr) ||
+                (dynamic_cast<const RenderGraphWindowDepthStencilNode*>(root) != nullptr);
 
             if (root == bufferNode && processedRoots.find(root) == processedRoots.end()) {
                 processedRoots.insert(root);
 
-                uint32_t width, height;
+                uint32_t width = 0;
+                uint32_t height = 0;
                 bool hasFixedSize = bufferNode->getComputedSize(width, height);
+                const bool hasValidExtent = !isWindowRooted && hasFixedSize && width > 0 && height > 0;
 
                 if (bufferNode->isExternal() && bufferNode->getImage()) {
                     Image* externalImage = resourceManager->registerExternalTarget(name, bufferNode->getImage());
                     bufferNode->setAllocatedImage(externalImage);
                     m_allocatedImages[name] = externalImage;
-                } else if (hasFixedSize && m_transientResourcePool) {
+                } else if (hasValidExtent && m_transientResourcePool) {
                     auto it = intervals.find(name);
                     uint32_t firstIdx = (it != intervals.end() && it->second.firstPassIdx != UINT32_MAX) ? it->second.firstPassIdx : 0;
                     uint32_t lastIdx = (it != intervals.end()) ? it->second.lastPassIdx : static_cast<uint32_t>(m_topologicalSortPasses.size());
@@ -652,7 +657,7 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
                     Image* allocatedImage = m_transientResourcePool->acquire(spec, firstIdx, lastIdx, m_currentFrameIndex);
                     bufferNode->setAllocatedImage(allocatedImage);
                     m_allocatedImages[name] = allocatedImage;
-                } else if (hasFixedSize) {
+                } else if (hasValidExtent) {
                     TargetDesc targetDesc;
                     targetDesc.width = static_cast<int>(width);
                     targetDesc.height = static_cast<int>(height);
@@ -683,15 +688,24 @@ void RenderGraph::removeDepthStencilEdge(DepthStencilEdge* edgeToRemove) {
                     continue;
                 }
 
-                uint32_t width = 0, height = 0;
-                bool hasSize = bufferNode->getComputedSize(width, height);
-                if (!hasSize && root) {
-                    auto* rootBuf = dynamic_cast<const RenderGraphBufferNode*>(root);
-                    if (rootBuf) {
-                        hasSize = rootBuf->getComputedSize(width, height);
+                // 窗口根节点通过 setFixed() 将尺寸标记为 0x0，派生目标必须回退至 ResourceManager 绑定窗口动态尺寸而非进入瞬态池
+                const bool isWindowRooted =
+                    (dynamic_cast<const RenderGraphWindowTargetNode*>(root) != nullptr) ||
+                    (dynamic_cast<const RenderGraphWindowDepthStencilNode*>(root) != nullptr);
+
+                uint32_t width = 0;
+                uint32_t height = 0;
+                bool hasSize = false;
+                if (!isWindowRooted) {
+                    hasSize = bufferNode->getComputedSize(width, height);
+                    if (!hasSize && root) {
+                        auto* rootBuf = dynamic_cast<const RenderGraphBufferNode*>(root);
+                        if (rootBuf) {
+                            hasSize = rootBuf->getComputedSize(width, height);
+                        }
                     }
                 }
-                if (hasSize && m_transientResourcePool) {
+                if (!isWindowRooted && hasSize && width > 0 && height > 0 && m_transientResourcePool) {
                     auto it = intervals.find(name);
                     uint32_t firstIdx = (it != intervals.end() && it->second.firstPassIdx != UINT32_MAX) ? it->second.firstPassIdx : 0;
                     uint32_t lastIdx = (it != intervals.end()) ? it->second.lastPassIdx : static_cast<uint32_t>(m_topologicalSortPasses.size());
